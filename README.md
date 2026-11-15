@@ -27,6 +27,7 @@
   - `10-mtk-wifi.start` — mounts `/nvdata` (`ro`), creates `/dev/wmtWifi` (`c 153 0`) & `/dev/stpwmt` (`c 190 0`), runs `/system/bin/wmt_loader` and `/system/bin/6620_launcher -p /system/etc/firmware/`, then enables `wlan0` via `echo 1 > /dev/wmtWifi`.
 
 ## Repository Layout
+- `boot/` — Prebuilt `boot_alpine.img` (stock `3.10.65` kernel + custom ramdisk), plus extracted `init` and `init.sh`.
 - `native_scripts/usr_local_bin/` — Core daemons and CLI utilities (`usbnet-daemon`, `usb-mode`, `setup-audio`, `cyberrec`, `cybercam`, `cyberview`, `hw_keys_daemon.py`, `touch_bridge.py`, `mtk_flusher.py`, etc.).
 - `native_scripts/sxmo_hooks/` — Modified `sxmo_hook_contextmenu.sh` with Wi-Fi, Audio, GPS, Flashlight, Screen Rotate, and USB Flash/RNDIS toggle.
 - `native_scripts/etc/` — OpenRC services (`usbnet`, `cyberdeck`), `fstab`, `network/interfaces`.

@@ -26,7 +26,7 @@
   - `10-mtk-wifi.start` — монтирует `/nvdata` (`ro`), создаёт узлы `/dev/wmtWifi` (`c 153 0`) и `/dev/stpwmt` (`c 190 0`), запускает `/system/bin/wmt_loader` и `/system/bin/6620_launcher -p /system/etc/firmware/`, после чего включает `wlan0` командой `echo 1 > /dev/wmtWifi`.
 
 ## Структура репозитория
-- `boot/` — `init` и `init.sh`, извлечённые из кастомного ramdisk.
+- `boot/` — Готовый образ `boot_alpine.img` (стоковое ядро `3.10.65` + кастомный ramdisk), а также извлечённые `init` и `init.sh`.
 - `native_scripts/usr_local_bin/` — Основные демоны и утилиты (`usbnet-daemon`, `usb-mode`, `setup-audio`, `cyberrec`, `cybercam`, `cyberview`, `hw_keys_daemon.py`, `touch_bridge.py`, `mtk_flusher.py` и др.).
 - `native_scripts/sxmo_hooks/` — Модифицированный `sxmo_hook_contextmenu.sh` с пунктами Wi-Fi, Audio, GPS, фонарика, поворота экрана и переключателя USB-флешки/RNDIS.
 - `native_scripts/etc/` — Сервисы OpenRC (`usbnet`, `cyberdeck`), скрипты `local.d`, `fstab`, `network/interfaces`.
