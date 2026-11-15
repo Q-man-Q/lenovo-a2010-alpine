@@ -10,7 +10,7 @@ def write_png(filename, width, height, rgba_data):
         raw.append(0) # filter None
         row = rgba_data[y*stride:(y+1)*stride]
         for x in range(0, stride, 4):
-            b, g, r = row[x], row[x+1], row[x+2]
+            r, g, b = row[x], row[x+1], row[x+2]
             raw.extend((r, g, b, 255))
             
     ihdr = struct.pack('>IIBBBBB', width, height, 8, 6, 0, 0, 0)
@@ -35,7 +35,7 @@ with open('/dev/graphics/fb0', 'rb') as f:
             # Score by RGB brightness (ignoring alpha)
             score = 0
             for i in range(0, len(part), 16):
-                b, g, r = part[i], part[i+1], part[i+2]
+                r, g, b = part[i], part[i+1], part[i+2]
                 score += (r + g + b)
             if score > best_score:
                 best_score = score
