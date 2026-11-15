@@ -1,0 +1,7 @@
+[Desktop Entry]
+Name=Keyboard
+Comment=Toggle Onscreen Keyboard
+Exec=/usr/local/bin/toggle-keyboard
+Icon=input-keyboard
+Terminal=false
+Type=Application

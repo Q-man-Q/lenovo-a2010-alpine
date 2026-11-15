@@ -1,0 +1,290 @@
+#!/usr/bin/python3
+# -*- coding: utf-8 -*-
+"""Minimal GTK3 image viewer."""
+
+import os
+import sys
+
+import gi
+gi.require_version("Gtk", "3.0")
+gi.require_version("Gdk", "3.0")
+gi.require_version("GdkPixbuf", "2.0")
+from gi.repository import Gdk, GdkPixbuf, Gtk, Pango
+
+EXTS = (".jpg", ".jpeg", ".png", ".webp", ".gif", ".bmp", ".svg", ".avif", ".jxl", ".tiff")
+DEFAULT_DIR = "/root/Pictures"
+
+
+class GalleryWindow(Gtk.Window):
+    def __init__(self, start_path=None):
+        super().__init__(title="Gallery")
+        self.set_default_size(460, 440)
+        self.set_border_width(6)
+
+        self.files = []
+        self.index = 0
+        self.pixbuf = None
+        self._scaled_1x = None
+        self._scaled_key = None
+        self.zoom = 1.0
+        self.pan_x = 0.0
+        self.pan_y = 0.0
+        self.angle = 0
+
+        self.drag_start_x = 0.0
+        self.drag_start_y = 0.0
+        self.drag_pan_x = 0.0
+        self.drag_pan_y = 0.0
+        self.is_dragging = False
+        self.last_tap_time = 0
+
+        self._build_ui()
+        self._load_file_list(start_path)
+        self._load_current_image()
+
+    def _build_ui(self):
+        root = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
+        self.add(root)
+
+        top = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
+        btn_open = Gtk.Button(label="Open")
+        btn_open.connect("clicked", self.on_open_dialog)
+        top.pack_start(btn_open, False, False, 0)
+
+        self.lbl_info = Gtk.Label(label="Gallery")
+        self.lbl_info.set_xalign(0.0)
+        self.lbl_info.set_ellipsize(Pango.EllipsizeMode.END)
+        top.pack_start(self.lbl_info, True, True, 0)
+        root.pack_start(top, False, False, 0)
+
+        self.canvas = Gtk.DrawingArea()
+        self.canvas.set_hexpand(True)
+        self.canvas.set_vexpand(True)
+        self.canvas.add_events(
+            Gdk.EventMask.BUTTON_PRESS_MASK
+            | Gdk.EventMask.BUTTON_RELEASE_MASK
+            | Gdk.EventMask.POINTER_MOTION_MASK
+        )
+        self.canvas.connect("draw", self.on_draw)
+        self.canvas.connect("button-press-event", self.on_button_press)
+        self.canvas.connect("motion-notify-event", self.on_motion)
+        self.canvas.connect("button-release-event", self.on_button_release)
+        root.pack_start(self.canvas, True, True, 0)
+
+        bar = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
+        for label, cb in (
+            ("<", lambda _w: self.step_image(-1)),
+            ("-", lambda _w: self.change_zoom(1 / 1.5)),
+            ("+", lambda _w: self.change_zoom(1.5)),
+            ("Rot", self.on_rotate),
+            ("Del", self.on_delete),
+            (">", lambda _w: self.step_image(1)),
+        ):
+            btn = Gtk.Button(label=label)
+            btn.connect("clicked", cb)
+            bar.pack_start(btn, True, True, 0)
+        root.pack_start(bar, False, False, 0)
+
+    def _load_file_list(self, start_path):
+        target_file = None
+        folders = []
+        if start_path and os.path.exists(start_path):
+            if os.path.isfile(start_path):
+                target_file = os.path.abspath(start_path)
+                folders = [os.path.dirname(target_file)]
+            elif os.path.isdir(start_path):
+                folders = [os.path.abspath(start_path)]
+        if not folders:
+            folders = [DEFAULT_DIR, "/root"]
+
+        collected = []
+        for d in folders:
+            if not os.path.isdir(d):
+                continue
+            try:
+                for fn in os.listdir(d):
+                    if fn.lower().endswith(EXTS):
+                        full = os.path.join(d, fn)
+                        if os.path.isfile(full):
+                            collected.append(full)
+            except OSError:
+                pass
+
+        collected.sort(
+            key=lambda p: os.path.getmtime(p) if os.path.exists(p) else 0,
+            reverse=True,
+        )
+        self.files = collected
+        if target_file and target_file in self.files:
+            self.index = self.files.index(target_file)
+        else:
+            self.index = 0
+
+    def _load_current_image(self):
+        self.zoom = 1.0
+        self.pan_x = 0.0
+        self.pan_y = 0.0
+        if not self.files:
+            self.pixbuf = None
+            self.lbl_info.set_text("No images")
+            self.canvas.queue_draw()
+            return
+
+        self.index = max(0, min(len(self.files) - 1, self.index))
+        path = self.files[self.index]
+        try:
+            pb = GdkPixbuf.Pixbuf.new_from_file(path)
+            if self.angle % 360 != 0:
+                pb = pb.rotate_simple(self.angle % 360)
+            self.pixbuf = pb
+            w, h = pb.get_width(), pb.get_height()
+            kb = os.path.getsize(path) // 1024
+            name = os.path.basename(path)
+            self.lbl_info.set_text(
+                f"[{self.index + 1}/{len(self.files)}] {name} ({w}x{h}, {kb}K)"
+            )
+        except Exception:
+            self.pixbuf = None
+            self.lbl_info.set_text(f"Read error: {os.path.basename(path)}")
+        self.canvas.queue_draw()
+
+    def step_image(self, delta):
+        if not self.files:
+            return
+        self.angle = 0
+        self.index = (self.index + delta) % len(self.files)
+        self._load_current_image()
+
+    def change_zoom(self, factor):
+        new_z = self.zoom * factor
+        if new_z <= 1.05:
+            self.zoom = 1.0
+            self.pan_x = 0.0
+            self.pan_y = 0.0
+        else:
+            self.zoom = min(6.0, new_z)
+        self.canvas.queue_draw()
+
+    def on_rotate(self, _widget):
+        self.angle = (self.angle + 270) % 360
+        self._load_current_image()
+
+    def on_delete(self, _widget):
+        if not self.files:
+            return
+        path = self.files[self.index]
+        try:
+            os.remove(path)
+        except OSError:
+            pass
+        del self.files[self.index]
+        if self.index >= len(self.files):
+            self.index = max(0, len(self.files) - 1)
+        self._load_current_image()
+
+    def on_open_dialog(self, _widget):
+        dlg = Gtk.FileChooserDialog(
+            title="Open Image",
+            parent=self,
+            action=Gtk.FileChooserAction.OPEN,
+        )
+        dlg.add_buttons(
+            "Cancel", Gtk.ResponseType.CANCEL,
+            "Open", Gtk.ResponseType.OK,
+        )
+        dlg.set_current_folder(DEFAULT_DIR if os.path.isdir(DEFAULT_DIR) else "/root")
+        chosen = dlg.get_filename() if dlg.run() == Gtk.ResponseType.OK else None
+        dlg.destroy()
+        if chosen:
+            self._load_file_list(chosen)
+            self._load_current_image()
+
+    def on_draw(self, widget, cr):
+        if not self.pixbuf:
+            return False
+        alloc = widget.get_allocation()
+        cw, ch = alloc.width, alloc.height
+        if cw <= 1 or ch <= 1:
+            return False
+
+        if self.zoom <= 1.01:
+            key = (id(self.pixbuf), cw, ch)
+            if self._scaled_key != key:
+                iw, ih = self.pixbuf.get_width(), self.pixbuf.get_height()
+                scale = min(cw / float(iw), ch / float(ih))
+                tw = max(1, int(iw * scale))
+                th = max(1, int(ih * scale))
+                self._scaled_1x = self.pixbuf.scale_simple(tw, th, GdkPixbuf.InterpType.BILINEAR)
+                self._scaled_key = key
+            pb = self._scaled_1x
+            x = (cw - pb.get_width()) // 2
+            y = (ch - pb.get_height()) // 2
+            Gdk.cairo_set_source_pixbuf(cr, pb, x, y)
+            cr.paint()
+            return False
+
+        iw, ih = self.pixbuf.get_width(), self.pixbuf.get_height()
+        scale = min(cw / float(iw), ch / float(ih)) * self.zoom
+        x = (cw - iw * scale) / 2.0 + self.pan_x
+        y = (ch - ih * scale) / 2.0 + self.pan_y
+
+        cr.save()
+        cr.translate(x, y)
+        cr.scale(scale, scale)
+        Gdk.cairo_set_source_pixbuf(cr, self.pixbuf, 0, 0)
+        cr.get_source().set_filter(0 if self.is_dragging else 1)
+        cr.paint()
+        cr.restore()
+        return False
+
+    def on_button_press(self, _widget, event):
+        if event.button != 1:
+            return True
+        if event.time - self.last_tap_time < 350:
+            if self.zoom > 1.1:
+                self.zoom = 1.0
+                self.pan_x = 0.0
+                self.pan_y = 0.0
+            else:
+                self.zoom = 2.5
+            self.canvas.queue_draw()
+            self.last_tap_time = 0
+            return True
+        self.last_tap_time = event.time
+        self.is_dragging = True
+        self.drag_start_x = event.x
+        self.drag_start_y = event.y
+        self.drag_pan_x = self.pan_x
+        self.drag_pan_y = self.pan_y
+        return True
+
+    def on_motion(self, _widget, event):
+        if self.is_dragging and self.zoom > 1.05:
+            self.pan_x = self.drag_pan_x + (event.x - self.drag_start_x)
+            self.pan_y = self.drag_pan_y + (event.y - self.drag_start_y)
+            self.canvas.queue_draw()
+        return True
+
+    def on_button_release(self, _widget, event):
+        if not self.is_dragging:
+            return True
+        self.is_dragging = False
+        dx = event.x - self.drag_start_x
+        dy = event.y - self.drag_start_y
+        if self.zoom <= 1.05 and abs(dx) > 65 and abs(dx) > abs(dy) * 1.5:
+            self.step_image(1 if dx < 0 else -1)
+        elif self.zoom > 1.05:
+            self.canvas.queue_draw()
+        return True
+
+
+def main():
+    arg = sys.argv[1] if len(sys.argv) > 1 else None
+    win = GalleryWindow(arg)
+    win.connect("destroy", Gtk.main_quit)
+    win.show_all()
+    Gtk.main()
+
+
+if __name__ == "__main__":
+    main()

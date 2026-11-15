@@ -1,0 +1,11 @@
+#!/sbin/openrc-run
+
+description="USB RNDIS network gadget for Lenovo A2010"
+command="/usr/local/bin/usbnet-daemon"
+command_background="yes"
+pidfile="/run/usbnet.pid"
+
+depend() {
+    need sysfs dev localmount
+    before sshd
+}

@@ -1,0 +1,14 @@
+#!/bin/sh
+export DISPLAY=:0
+export PATH=/usr/local/bin:/usr/bin:/bin:/usr/local/sbin:/usr/sbin:/sbin
+
+CUR=$(bspc query -T -d 2>/dev/null | grep -o '"layout":"[^"]*"' | head -n 1 | cut -d'"' -f4)
+if [ "$CUR" = "monocle" ]; then
+    bspc desktop -l tiled
+    echo "tiled" > /tmp/prev_bspwm_layout
+else
+    # Close keyboard first if switching to full-screen monocle
+    killall matchbox-keyboard 2>/dev/null || true
+    bspc desktop -l monocle
+    echo "monocle" > /tmp/prev_bspwm_layout
+fi

@@ -1,0 +1,10 @@
+[Desktop Entry]
+Version=1.0
+Name=Restart Environment
+Name[ru]=Перезапуск среды
+Comment=Reload and restart Cyberdeck environment
+Exec=/usr/local/bin/phone-desktop
+Icon=view-refresh
+Terminal=false
+Type=Application
+Categories=System;

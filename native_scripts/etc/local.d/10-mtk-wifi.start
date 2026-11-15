@@ -1,0 +1,18 @@
+#!/bin/sh
+mkdir -p /nvdata /data /var/run/wpa_supplicant
+mountpoint -q /nvdata || mount -o ro /dev/mmcblk0p18 /nvdata
+ln -sfn /nvdata /data/nvram
+ln -sfn /system/etc/firmware /etc/firmware
+
+[ -c /dev/wmtWifi ] || { rm -f /dev/wmtWifi && mknod /dev/wmtWifi c 153 0 && chmod 660 /dev/wmtWifi; }
+[ -c /dev/stpwmt ] || { rm -f /dev/stpwmt && mknod /dev/stpwmt c 190 0 && chmod 660 /dev/stpwmt; }
+
+export LD_LIBRARY_PATH=/system/lib:/vendor/lib
+/system/bin/wmt_loader
+/system/bin/6620_launcher -p /system/etc/firmware/ >/var/log/6620_launcher.log 2>&1 &
+sleep 2
+echo 1 > /dev/wmtWifi
+sleep 1
+ip link set wlan0 up 2>/dev/null || true
+rm -f /var/run/wpa_supplicant/wlan0
+wpa_supplicant -B -i wlan0 -D nl80211 -c /etc/wpa_supplicant/wpa_supplicant.conf 2>/dev/null || true

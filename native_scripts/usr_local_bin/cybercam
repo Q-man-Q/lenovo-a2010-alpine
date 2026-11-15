@@ -1,0 +1,345 @@
+#!/usr/bin/python3
+# -*- coding: utf-8 -*-
+"""Minimal GTK3 camera app with persistent CamShot Android daemon."""
+
+import glob
+import os
+import subprocess
+import threading
+import time
+from datetime import datetime
+
+import gi
+gi.require_version("Gtk", "3.0")
+gi.require_version("Gdk", "3.0")
+gi.require_version("GdkPixbuf", "2.0")
+from gi.repository import Gdk, GdkPixbuf, GLib, Gtk, Pango
+
+PICTURES_DIR = "/root/Pictures"
+os.makedirs(PICTURES_DIR, exist_ok=True)
+FLASH_MODES = [("off", "Flash: Off"), ("auto", "Flash: Auto"), ("on", "Flash: On")]
+
+
+class CameraWindow(Gtk.Window):
+    def __init__(self):
+        super().__init__(title="Camera")
+        self.set_default_size(460, 440)
+        self.set_border_width(6)
+
+        self.camera_id = 0
+        self.flash_idx = 0
+        self.is_capturing = False
+        self.last_photo_path = None
+        self.pixbuf = None
+        self._scaled_pb = None
+        self._scaled_key = None
+
+        self._daemon = None
+        self._daemon_lock = threading.Lock()
+
+        self._build_ui()
+        self.load_latest_photo()
+        self.connect("destroy", self._on_destroy)
+        threading.Thread(target=self._init_daemon, daemon=True).start()
+
+    def _build_ui(self):
+        root = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
+        self.add(root)
+
+        top = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
+        self.btn_switch = Gtk.Button(label="Rear 5MP")
+        self.btn_switch.connect("clicked", self.on_switch_camera)
+        top.pack_start(self.btn_switch, False, False, 0)
+
+        self.btn_flash = Gtk.Button(label=FLASH_MODES[0][1])
+        self.btn_flash.connect("clicked", self.on_flash_clicked)
+        top.pack_start(self.btn_flash, False, False, 0)
+
+        self.btn_gallery = Gtk.Button(label="Photos (0)")
+        self.btn_gallery.connect("clicked", self.on_gallery_clicked)
+        top.pack_end(self.btn_gallery, False, False, 0)
+        root.pack_start(top, False, False, 0)
+
+        self.canvas = Gtk.DrawingArea()
+        self.canvas.set_vexpand(True)
+        self.canvas.set_hexpand(True)
+        self.canvas.connect("draw", self.on_draw)
+        root.pack_start(self.canvas, True, True, 0)
+
+        self.status_label = Gtk.Label(label="Starting camera...")
+        self.status_label.set_xalign(0.0)
+        self.status_label.set_ellipsize(Pango.EllipsizeMode.END)
+        root.pack_start(self.status_label, False, False, 0)
+
+        self.btn_shutter = Gtk.Button(label="Snap")
+        self.btn_shutter.set_size_request(-1, 38)
+        self.btn_shutter.connect("clicked", self.on_shutter_clicked)
+        root.pack_start(self.btn_shutter, False, False, 0)
+
+    def _ensure_daemon_locked(self):
+        if self._daemon is not None and self._daemon.poll() is None:
+            return self._daemon
+
+        subprocess.run(
+            ["/bin/sh", "/data/run_stub_services.sh"],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        env = os.environ.copy()
+        env.update(
+            {
+                "ANDROID_ROOT": "/system",
+                "ANDROID_DATA": "/data",
+                "LD_LIBRARY_PATH": "/system/vendor/lib:/system/lib",
+                "CLASSPATH": "/data/camshot.jar",
+                "PATH": "/system/bin:/system/xbin:/usr/local/bin:/usr/bin:/bin",
+            }
+        )
+        app_proc = (
+            "/system/bin/app_process32"
+            if os.path.exists("/system/bin/app_process32")
+            else "/system/bin/app_process"
+        )
+        proc = subprocess.Popen(
+            [app_proc, "/system/bin", "com.cyberdeck.CamShot", "--daemon", str(self.camera_id)],
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            text=True,
+            bufsize=1,
+            env=env,
+        )
+        line = proc.stdout.readline().strip()
+        if line.startswith("READY"):
+            self._daemon = proc
+            mode = FLASH_MODES[self.flash_idx][0]
+            if mode != "off":
+                try:
+                    proc.stdin.write(f"FLASH {mode}\n")
+                    proc.stdin.flush()
+                    proc.stdout.readline()
+                except Exception:
+                    pass
+            return proc
+        try:
+            proc.kill()
+        except Exception:
+            pass
+        self._daemon = None
+        return None
+
+    def _init_daemon(self):
+        with self._daemon_lock:
+            ok = self._ensure_daemon_locked() is not None
+        if ok and not self.last_photo_path:
+            GLib.idle_add(self.status_label.set_text, "Ready")
+
+    def _on_destroy(self, *_args):
+        proc = self._daemon
+        self._daemon = None
+        if proc is not None and proc.poll() is None:
+            try:
+                proc.stdin.write("QUIT\n")
+                proc.stdin.flush()
+            except Exception:
+                pass
+            try:
+                proc.terminate()
+            except Exception:
+                pass
+        Gtk.main_quit()
+
+    def on_draw(self, widget, cr):
+        if not self.pixbuf:
+            return False
+        alloc = widget.get_allocation()
+        cw, ch = alloc.width, alloc.height
+        if cw <= 1 or ch <= 1:
+            return False
+        key = (id(self.pixbuf), cw, ch)
+        if self._scaled_key != key:
+            iw, ih = self.pixbuf.get_width(), self.pixbuf.get_height()
+            scale = min(cw / float(iw), ch / float(ih))
+            tw = max(1, int(iw * scale))
+            th = max(1, int(ih * scale))
+            self._scaled_pb = self.pixbuf.scale_simple(tw, th, GdkPixbuf.InterpType.BILINEAR)
+            self._scaled_key = key
+        pb = self._scaled_pb
+        x = (cw - pb.get_width()) // 2
+        y = (ch - pb.get_height()) // 2
+        Gdk.cairo_set_source_pixbuf(cr, pb, x, y)
+        cr.paint()
+        return False
+
+    def _photo_list(self):
+        return sorted(
+            glob.glob(os.path.join(PICTURES_DIR, "*.jpg")),
+            key=os.path.getmtime,
+            reverse=True,
+        )
+
+    def load_latest_photo(self):
+        photos = self._photo_list()
+        self.btn_gallery.set_label(f"Photos ({len(photos)})")
+        if photos:
+            self.display_photo(photos[0])
+        else:
+            self.status_label.set_text("No photos yet")
+
+    def display_photo(self, path, preloaded_pb=None):
+        try:
+            self.last_photo_path = path
+            self.pixbuf = preloaded_pb or GdkPixbuf.Pixbuf.new_from_file(path)
+            self.canvas.queue_draw()
+            size_kb = os.path.getsize(path) // 1024 if os.path.exists(path) else 0
+            self.status_label.set_text(f"{os.path.basename(path)} ({size_kb} KB)")
+        except Exception as exc:
+            self.pixbuf = None
+            self.canvas.queue_draw()
+            self.status_label.set_text(f"Load error: {exc}")
+
+    def on_switch_camera(self, _widget):
+        if self.is_capturing:
+            return
+        self.camera_id = 1 if self.camera_id == 0 else 0
+        self.btn_switch.set_label("Front 2MP" if self.camera_id == 1 else "Rear 5MP")
+        self.btn_flash.set_sensitive(self.camera_id == 0)
+        cam_id = self.camera_id
+        threading.Thread(target=self._switch_daemon_camera, args=(cam_id,), daemon=True).start()
+
+    def on_flash_clicked(self, _widget):
+        if self.is_capturing:
+            return
+        self.flash_idx = (self.flash_idx + 1) % len(FLASH_MODES)
+        mode, label = FLASH_MODES[self.flash_idx]
+        self.btn_flash.set_label(label)
+        threading.Thread(target=self._set_daemon_flash, args=(mode,), daemon=True).start()
+
+    def _set_daemon_flash(self, mode):
+        with self._daemon_lock:
+            proc = self._ensure_daemon_locked()
+            if proc is None:
+                return
+            try:
+                proc.stdin.write(f"FLASH {mode}\n")
+                proc.stdin.flush()
+                proc.stdout.readline()
+            except Exception:
+                self._daemon = None
+
+    def _switch_daemon_camera(self, cam_id):
+        with self._daemon_lock:
+            proc = self._ensure_daemon_locked()
+            if proc is None:
+                return
+            try:
+                proc.stdin.write(f"SWITCH {cam_id}\n")
+                proc.stdin.flush()
+                proc.stdout.readline()
+            except Exception:
+                self._daemon = None
+
+    def on_shutter_clicked(self, _widget):
+        if self.is_capturing:
+            return
+        self.is_capturing = True
+        self.btn_shutter.set_sensitive(False)
+        self.btn_switch.set_sensitive(False)
+        self.btn_flash.set_sensitive(False)
+        self.btn_shutter.set_label("Capturing...")
+        self.status_label.set_text("Capturing photo...")
+        threading.Thread(target=self._capture_thread, daemon=True).start()
+
+    def _capture_thread(self):
+        t0 = time.time()
+        ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+        prefix = "cam_front" if self.camera_id == 1 else "cam_main"
+        out_path = os.path.join(PICTURES_DIR, f"{prefix}_{ts}.jpg")
+
+        ok = False
+        err = ""
+        with self._daemon_lock:
+            proc = self._ensure_daemon_locked()
+            if proc is not None:
+                try:
+                    proc.stdin.write(f"SNAP {self.camera_id} {out_path}\n")
+                    proc.stdin.flush()
+                    resp = proc.stdout.readline().strip()
+                    if resp.startswith("OK ") and os.path.exists(out_path):
+                        ok = True
+                    else:
+                        err = resp
+                except Exception as exc:
+                    err = str(exc)
+                    self._daemon = None
+
+        if not ok:
+            cmd = ["/usr/local/bin/camshot", "--no-rotate"]
+            if self.camera_id == 1:
+                cmd.append("-f")
+            cmd.extend(["-o", out_path, "-w", "500"])
+            try:
+                res = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+                ok = res.returncode == 0 and os.path.exists(out_path)
+                err = res.stderr.strip()
+            except Exception as exc:
+                err = str(exc)
+
+        pb = None
+        if ok:
+            try:
+                pb = GdkPixbuf.Pixbuf.new_from_file(out_path).rotate_simple(180)
+            except Exception as exc:
+                ok = False
+                err = str(exc)
+
+        dt = time.time() - t0
+        GLib.idle_add(self._on_capture_finished, ok, out_path, pb, dt, err)
+
+        if ok and pb is not None:
+            try:
+                pb.savev(out_path, "jpeg", ["quality"], ["92"])
+            except Exception:
+                pass
+
+    def _on_capture_finished(self, ok, out_path, pb, elapsed, err):
+        self.is_capturing = False
+        self.btn_shutter.set_sensitive(True)
+        self.btn_switch.set_sensitive(True)
+        self.btn_flash.set_sensitive(self.camera_id == 0)
+        self.btn_shutter.set_label("Snap")
+
+        if ok and out_path:
+            self.display_photo(out_path, preloaded_pb=pb)
+            count = len(self._photo_list())
+            self.btn_gallery.set_label(f"Photos ({count})")
+            size_kb = os.path.getsize(out_path) // 1024 if os.path.exists(out_path) else 0
+            self.status_label.set_text(
+                f"{os.path.basename(out_path)} ({size_kb} KB, {elapsed:.1f}s)"
+            )
+        else:
+            self.status_label.set_text(f"Capture failed: {err or 'unknown error'}")
+
+    def on_gallery_clicked(self, _widget):
+        target = (
+            self.last_photo_path
+            if self.last_photo_path and os.path.exists(self.last_photo_path)
+            else PICTURES_DIR
+        )
+        for cmd in (["/usr/local/bin/cyberview", target], ["pcmanfm", PICTURES_DIR]):
+            try:
+                subprocess.Popen(cmd, env=os.environ.copy())
+                return
+            except FileNotFoundError:
+                continue
+        self.status_label.set_text(f"Saved in {PICTURES_DIR}")
+
+
+def main():
+    win = CameraWindow()
+    win.show_all()
+    Gtk.main()
+
+
+if __name__ == "__main__":
+    main()

@@ -1,0 +1,10 @@
+[Desktop Entry]
+Version=1.0
+Name=Power Off
+Name[ru]=Выключение
+Comment=Shut down device
+Exec=/usr/local/bin/poweroff-dialog
+Icon=system-shutdown
+Terminal=false
+Type=Application
+Categories=System;

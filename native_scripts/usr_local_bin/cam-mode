@@ -1,0 +1,21 @@
+#!/bin/sh
+# Lenovo A2010 Cyberdeck -> Camera Mode Switcher
+echo 'Переключение в режим камеры...'
+killall -9 onboard matchbox-keyboard svkbd-mobile-intl svkbd tint2 bspwm bspc rofi xfce4-terminal mousepad badwolf dillo WebKitWebProcess WebKitNetworkProcess openbox Xorg 2>/dev/null || true
+pkill -9 -f mtk_flusher.py 2>/dev/null || true
+pkill -9 -f touch_bridge.py 2>/dev/null || true
+rm -f /dev/input/touch_pointer /dev/input/virt_wheel 2>/dev/null || true
+
+/system/bin/start
+
+for i in 1 2 3 4 5 6 7 8 9 10; do
+    if [ "$(/system/bin/getprop init.svc.zygote)" = "running" ] && [ "$(/system/bin/getprop init.svc.surfaceflinger)" = "running" ]; then
+        break
+    fi
+    sleep 0.5
+done
+
+sleep 1
+/system/bin/input keyevent 82 2>/dev/null || true
+/system/bin/am start -a android.media.action.STILL_IMAGE_CAMERA 2>/dev/null || true
+echo 'Камера активна!'

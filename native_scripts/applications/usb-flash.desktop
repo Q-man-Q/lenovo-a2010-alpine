@@ -1,0 +1,10 @@
+[Desktop Entry]
+Version=1.0
+Name=USB: Boot Flash
+Name[ru]=USB: Загрузочная флешка
+Comment=Switch USB to Alpine Live/Diskless Boot Flash
+Exec=/usr/local/bin/usb-mode flash
+Icon=drive-removable-media
+Terminal=false
+Type=Application
+Categories=System;

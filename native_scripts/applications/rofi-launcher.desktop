@@ -1,0 +1,8 @@
+[Desktop Entry]
+Name=Apps
+Comment=Applications
+Exec=/usr/local/bin/toggle-rofi
+Icon=system-run
+Terminal=false
+Type=Application
+NoDisplay=true

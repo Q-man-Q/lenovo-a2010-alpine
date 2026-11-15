@@ -1,0 +1,78 @@
+configuration {
+    modi: "drun";
+    font: "Sans Bold 12";
+    show-icons: true;
+    icon-theme: "Adwaita";
+    terminal: "xfce4-terminal";
+    drun-display-format: "{name}";
+    hover-select: true;
+    me-select-entry: "";
+    me-accept-entry: "MousePrimary";
+    scroll-method: 1;
+}
+
+window {
+    width: 464px;
+    height: 750px;
+    border: 2px;
+    border-color: #7aa2f7;
+    border-radius: 12px;
+    background-color: #1a1b26;
+    padding: 12px;
+}
+
+mainbox {
+    background-color: transparent;
+    spacing: 10px;
+}
+
+inputbar {
+    background-color: #24283b;
+    border-radius: 8px;
+    padding: 10px 12px;
+    children: [ prompt, entry ];
+}
+
+prompt {
+    text-color: #7aa2f7;
+    padding: 0 8px 0 0;
+}
+
+entry {
+    text-color: #c0caf5;
+    placeholder: "Поиск приложения...";
+    placeholder-color: #565f89;
+}
+
+listview {
+    background-color: transparent;
+    columns: 2;
+    lines: 5;
+    spacing: 8px;
+    fixed-height: true;
+    fixed-columns: true;
+}
+
+element {
+    orientation: vertical;
+    background-color: #24283b;
+    border-radius: 10px;
+    padding: 14px 8px;
+    spacing: 8px;
+}
+
+element selected {
+    background-color: #3d59a1;
+    text-color: #ffffff;
+}
+
+element-icon {
+    size: 40px;
+    horizontal-align: 0.5;
+}
+
+element-text {
+    text-color: inherit;
+    horizontal-align: 0.5;
+    vertical-align: 0.5;
+}

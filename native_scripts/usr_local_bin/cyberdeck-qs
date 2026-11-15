@@ -1,0 +1,154 @@
+#!/bin/sh
+# Android / Phosh / Sxmo Quick Settings Shade for Lenovo A2010 Cyberdeck
+export DISPLAY=:0
+export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+
+# Toggle behavior: if Rofi is already open, close it
+if /bin/busybox pkill -x rofi 2>/dev/null; then
+    exit 0
+fi
+
+TELEMETRY=$(/usr/local/bin/status-bar-info 2>/dev/null)
+IP_ADDR=$(ip -4 addr show rndis0 2>/dev/null | awk '/inet / {print $2}' | cut -d/ -f1 | head -n 1)
+[ -z "$IP_ADDR" ] && IP_ADDR="offline"
+
+TORCH_VAL=$(cat /sys/class/leds/torch/brightness 2>/dev/null || echo 0)
+if [ "$TORCH_VAL" -gt 0 ] 2>/dev/null; then
+    TORCH_TILE="🔦 Фонарик: ВКЛ"
+else
+    TORCH_TILE="🔦 Фонарик: ВЫКЛ"
+fi
+
+BL_VAL=$(cat /sys/class/leds/lcd-backlight/brightness 2>/dev/null || echo 255)
+if [ "$BL_VAL" -ge 200 ] 2>/dev/null; then
+    BL_TILE="🔆 Яркость: 100%"
+elif [ "$BL_VAL" -ge 100 ] 2>/dev/null; then
+    BL_TILE="🔆 Яркость: 50%"
+else
+    BL_TILE="🔆 Яркость: 20%"
+fi
+
+CUR_LAYOUT=$(bspc query -T -d 2>/dev/null | grep -o '"layout":"[^"]*"' | head -n 1 | cut -d'"' -f4)
+if [ "$CUR_LAYOUT" = "monocle" ]; then
+    LAYOUT_TILE="📐 Экран: Полный"
+else
+    LAYOUT_TILE="📐 Экран: Сплит"
+fi
+
+KBD_LANG=$(cat /tmp/keyboard_layout 2>/dev/null || echo "ru")
+if [ "$KBD_LANG" = "ru" ]; then
+    LANG_TILE="🌐 Раскладка: RU"
+else
+    LANG_TILE="🌐 Раскладка: EN"
+fi
+
+if /bin/busybox pgrep -x darkhttpd >/dev/null 2>&1; then
+    HTTP_TILE="📡 Веб-Шара: ВКЛ"
+else
+    HTTP_TILE="📡 Веб-Шара: :8080"
+fi
+
+CPU_GOV=$(cat /sys/devices/system/cpu/cpu0/cpufreq/scaling_governor 2>/dev/null || echo "interactive")
+if [ "$CPU_GOV" = "powersave" ]; then
+    CPU_TILE="🔋 CPU: Эко"
+else
+    CPU_TILE="🚀 CPU: Авто"
+fi
+
+AUDIO_ROUTE=$(cat /tmp/audio_route 2>/dev/null || echo "speaker")
+if [ "$AUDIO_ROUTE" = "headset" ]; then
+    AUDIO_TILE="🎧 Звук: Наушники"
+elif [ "$AUDIO_ROUTE" = "mute" ]; then
+    AUDIO_TILE="🔇 Звук: Выкл"
+else
+    AUDIO_TILE="🔊 Звук: Динамик"
+fi
+
+IDLE_SEC=$(cat /tmp/screen_timeout 2>/dev/null || echo "150")
+if [ "$IDLE_SEC" = "0" ]; then
+    IDLE_TILE="⏱ Автосон: Выкл"
+elif [ "$IDLE_SEC" = "300" ]; then
+    IDLE_TILE="⏱ Автосон: 5 мин"
+else
+    IDLE_TILE="⏱ Автосон: 2.5м"
+fi
+
+USB_MODE=$(cat /tmp/usb_mode 2>/dev/null || echo "rndis")
+if [ "$USB_MODE" = "flash" ]; then
+    USB_TILE="💾 USB: Флешка"
+else
+    USB_TILE="🔌 USB: RNDIS"
+fi
+
+HEADER="${TELEMETRY}   🌐 ${IP_ADDR}"
+
+CHOICE=$(printf "%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n📷 Киберкамера\n📸 Скриншот\n🔄 Рестарт UI\n⚡ Питание / Сон" \
+    "$TORCH_TILE" "$BL_TILE" "$AUDIO_TILE" "$IDLE_TILE" "$LAYOUT_TILE" "$LANG_TILE" "$HTTP_TILE" "$USB_TILE" "$CPU_TILE" \
+    | rofi -dmenu -hover-select -me-select-entry '' -me-accept-entry MousePrimary -theme /root/.config/rofi/qs.rasi -mesg "$HEADER")
+
+case "$CHOICE" in
+    *"Фонарик"*)
+        if [ "$TORCH_VAL" -gt 0 ] 2>/dev/null; then
+            echo 0 > /sys/class/leds/torch/brightness 2>/dev/null || true
+        else
+            echo 255 > /sys/class/leds/torch/brightness 2>/dev/null || true
+        fi
+        ;;
+    *"Яркость"*)
+        if [ "$BL_VAL" -ge 200 ] 2>/dev/null; then
+            echo 120 > /sys/class/leds/lcd-backlight/brightness 2>/dev/null || true
+        elif [ "$BL_VAL" -ge 100 ] 2>/dev/null; then
+            echo 50 > /sys/class/leds/lcd-backlight/brightness 2>/dev/null || true
+        else
+            echo 255 > /sys/class/leds/lcd-backlight/brightness 2>/dev/null || true
+        fi
+        ;;
+    *"Звук:"*)
+        /usr/bin/python3 /usr/local/bin/setup-audio toggle >/dev/null 2>&1 &
+        ;;
+    *"Автосон:"*)
+        if [ "$IDLE_SEC" = "150" ]; then
+            echo 300 > /tmp/screen_timeout
+        elif [ "$IDLE_SEC" = "300" ]; then
+            echo 0 > /tmp/screen_timeout
+        else
+            echo 150 > /tmp/screen_timeout
+        fi
+        ;;
+    *"Экран:"*)
+        /usr/local/bin/toggle-layout
+        ;;
+    *"Раскладка:"*)
+        /usr/local/bin/toggle-keyboard-lang
+        ;;
+    *"Веб-Шара"*)
+        if /bin/busybox pgrep -x darkhttpd >/dev/null 2>&1; then
+            /bin/busybox pkill -x darkhttpd 2>/dev/null || true
+        else
+            /usr/bin/darkhttpd /root --port 8080 --daemon 2>/dev/null || true
+        fi
+        ;;
+    *"USB:"*)
+        /usr/local/bin/usb-mode toggle >/dev/null 2>&1 &
+        ;;
+    *"CPU:"*)
+        if [ "$CPU_GOV" = "powersave" ]; then
+            for g in /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor; do echo interactive > "$g" 2>/dev/null || true; done
+        else
+            for g in /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor; do echo powersave > "$g" 2>/dev/null || true; done
+        fi
+        ;;
+    *"Киберкамера"*)
+        nohup /usr/local/bin/cybercam-launch </dev/null >/dev/null 2>&1 &
+        ;;
+    *"Скриншот"*)
+        sleep 0.3
+        /usr/local/bin/screenshot >/dev/null 2>&1 &
+        ;;
+    *"Рестарт UI"*)
+        nohup /usr/local/bin/phone-desktop </dev/null >/var/log/phone_desktop.log 2>&1 &
+        ;;
+    *"Питание"*)
+        /usr/local/bin/poweroff-dialog &
+        ;;
+esac

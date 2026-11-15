@@ -1,0 +1,67 @@
+#!/bin/sh
+# ==============================================================================
+# Lenovo A2010 Native Alpine — Two-Tier Swap Configurator
+# Tier 1 (Priority 100): /dev/zram0 (512 MB compressed RAM swap in kernel)
+# Tier 2 (Priority 50) : /dev/mmcblk0p21 (400 MB unused Android 'cache' partition)
+# Tier 3 (Priority 10) : /swapfile (512 MB file on /dev/mmcblk0p22 if needed)
+# Total Swap: ~1.4 GB (+ 934 MB physical RAM = ~2.35 GB total memory!)
+# ==============================================================================
+export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+
+echo "=== Настройка многоуровневого Swap для Lenovo A2010 ==="
+
+# 1. Tier 1: ZRAM (512 MB in-RAM compressed swap, priority 100)
+if [ -e /sys/block/zram0/disksize ]; then
+    if ! grep -q "zram0" /proc/swaps 2>/dev/null; then
+        [ -b /dev/zram0 ] || mknod /dev/zram0 b 253 0 2>/dev/null || mdev -s 2>/dev/null
+        echo 1 > /sys/block/zram0/reset 2>/dev/null || true
+        echo $((512 * 1024 * 1024)) > /sys/block/zram0/disksize 2>/dev/null || true
+        mkswap /dev/zram0 >/dev/null 2>&1 || true
+        swapon -p 100 /dev/zram0 2>/dev/null && echo "[+] Tier 1: zram0 (512 MB, prio 100) активирован!"
+    else
+        echo "[*] Tier 1: zram0 уже активен."
+    fi
+fi
+
+# 2. Tier 2: Dedicated eMMC 'cache' partition /dev/mmcblk0p21 (400 MB, priority 50)
+if [ -b /dev/mmcblk0p21 ] || [ -e /sys/class/block/mmcblk0p21/dev ]; then
+    if [ ! -b /dev/mmcblk0p21 ]; then
+        DEVNUM=$(cat /sys/class/block/mmcblk0p21/dev 2>/dev/null)
+        MAJ=${DEVNUM%:*}
+        MIN=${DEVNUM#*:}
+        [ -n "$MAJ" ] && [ -n "$MIN" ] && mknod /dev/mmcblk0p21 b "$MAJ" "$MIN" 2>/dev/null
+    fi
+    if ! grep -q "mmcblk0p21" /proc/swaps 2>/dev/null; then
+        # Ensure it's not mounted
+        umount /dev/mmcblk0p21 2>/dev/null || true
+        if ! blkid /dev/mmcblk0p21 2>/dev/null | grep -q 'TYPE="swap"'; then
+            echo "[*] Форматируем пустующий раздел cache (/dev/mmcblk0p21, 400 MB) под Swap..."
+            mkswap -L alpine_cache_swap /dev/mmcblk0p21 >/dev/null 2>&1 || true
+        fi
+        swapon -p 50 /dev/mmcblk0p21 2>/dev/null && echo "[+] Tier 2: раздел cache /dev/mmcblk0p21 (400 MB, prio 50) активирован!"
+    else
+        echo "[*] Tier 2: /dev/mmcblk0p21 уже активен."
+    fi
+fi
+
+# 3. Tier 3: /swapfile (512 MB on rootfs, priority 10)
+if ! grep -q "/swapfile" /proc/swaps 2>/dev/null; then
+    if [ ! -f /swapfile ]; then
+        echo "[*] Создаём /swapfile (512 MB)..."
+        dd if=/dev/zero of=/swapfile bs=1M count=512 status=none 2>/dev/null
+        chmod 600 /swapfile
+        mkswap /swapfile >/dev/null 2>&1
+    fi
+    swapon -p 10 /swapfile 2>/dev/null && echo "[+] Tier 3: /swapfile (512 MB, prio 10) активирован!"
+else
+    echo "[*] Tier 3: /swapfile уже активен."
+fi
+
+# 4. Kernel VM tuning for 1GB RAM + ZRAM/eMMC Swap
+sysctl -w vm.swappiness=60 >/dev/null 2>&1 || true
+sysctl -w vm.vfs_cache_pressure=50 >/dev/null 2>&1 || true
+sysctl -w vm.page-cluster=0 >/dev/null 2>&1 || true
+
+echo ""
+free -m
+cat /proc/swaps

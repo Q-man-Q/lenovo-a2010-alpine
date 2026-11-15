@@ -1,0 +1,4 @@
+#!/bin/sh
+export DISPLAY=:0
+export PATH=/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin
+exec /usr/bin/python3 /usr/local/bin/cybercam

@@ -1,0 +1,175 @@
+#!/bin/sh
+# Lenovo A2010 Sxmo Mobile Environment Runner & Restarter (Native Alpine)
+trap '' HUP
+
+export HOME=/root
+export XDG_CONFIG_HOME=/root/.config
+export SHELL=/bin/sh
+export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/system/bin:/system/xbin
+export WEBKIT_DISABLE_SANDBOX_THIS_IS_DANGEROUS=1
+export LIBGL_ALWAYS_SOFTWARE=1
+export GDK_BACKEND=x11
+export DISPLAY=:0
+export SXMO_DEVICE_NAME=lenovo_a2010
+export SXMO_WM=dwm
+export XDG_CURRENT_DESKTOP=dwm
+export USER=root
+
+# If not running in an interactive terminal, redirect logs
+if [ ! -t 0 ]; then
+    exec </dev/null
+fi
+mkdir -p /var/log; if [ ! -t 1 ]; then
+    exec >>/var/log/phone_desktop.log 2>&1
+fi
+
+# 0. Завершаем предыдущие экземпляры phone-desktop с SIGKILL
+CURRENT_PID=$$
+if [ -f /tmp/phone-desktop.pid ]; then
+    OLD_PID=$(cat /tmp/phone-desktop.pid 2>/dev/null)
+    if [ -n "$OLD_PID" ] && [ "$OLD_PID" != "$CURRENT_PID" ]; then
+        kill -9 "$OLD_PID" 2>/dev/null || true
+    fi
+fi
+
+for p in $(pgrep -f /usr/local/bin/phone-desktop 2>/dev/null); do
+    if [ "$p" != "$CURRENT_PID" ]; then
+        kill -9 "$p" 2>/dev/null || true
+    fi
+done
+
+for p in $(pgrep -f /usr/local/bin/restart-desktop 2>/dev/null); do
+    if [ "$p" != "$CURRENT_PID" ]; then
+        kill -9 "$p" 2>/dev/null || true
+    fi
+done
+
+echo "$CURRENT_PID" > /tmp/phone-desktop.pid
+
+CLEANED=0
+cleanup() {
+    if [ "$CLEANED" = "1" ]; then
+        return
+    fi
+    CLEANED=1
+    echo ""
+    echo "Завершаем графическую сессию Sxmo Mobile..."
+    rm -f /tmp/phone-desktop.pid 2>/dev/null || true
+    killall -9 dwm superd lisgd svkbd-mobile-intl svkbd dmenu autocutsel conky dunst unclutter unclutter-xfixes st xfce4-terminal mousepad badwolf dillo WebKitWebProcess WebKitNetworkProcess openbox Xorg tint2 bspwm bspc rofi 2>/dev/null || true
+    pkill -9 -f mtk_flusher.py 2>/dev/null || true
+    pkill -9 -f touch_bridge.py 2>/dev/null || true
+    pkill -9 -f hw_keys_daemon.py 2>/dev/null || true
+    rm -f /dev/input/touch_pointer /dev/input/virt_wheel 2>/dev/null || true
+    echo 0 > /sys/class/leds/lcd-backlight/brightness 2>/dev/null || true
+    echo "Графика остановлена, экран погашен. SSH (10.42.0.2) продолжает работать."
+}
+
+trap cleanup INT TERM
+
+echo "1. Очищаем старые графические процессы..."
+killall -9 dwm superd lisgd svkbd-mobile-intl svkbd dmenu autocutsel conky dunst unclutter unclutter-xfixes st xfce4-terminal mousepad badwolf dillo WebKitWebProcess WebKitNetworkProcess openbox Xorg tint2 bspwm bspc rofi 2>/dev/null || true
+pkill -9 -f mtk_flusher.py 2>/dev/null || true
+pkill -9 -f touch_bridge.py 2>/dev/null || true
+pkill -9 -f hw_keys_daemon.py 2>/dev/null || true
+rm -f /dev/input/touch_pointer /dev/input/virt_wheel 2>/dev/null || true
+sleep 0.5
+
+echo "2. Настраиваем окружение, Swap, Звук и сокеты X11..."
+printf "nameserver 1.1.1.1\nnameserver 8.8.8.8\n" > /etc/resolv.conf 2>/dev/null || true
+/usr/sbin/ntpd -n -q -p pool.ntp.org -p time.cloudflare.com </dev/null >/dev/null 2>&1 &
+/usr/local/bin/setup-swap </dev/null >/var/log/swap.log 2>&1 &
+/usr/bin/python3 /usr/local/bin/setup-audio speaker </dev/null >/var/log/audio.log 2>&1 &
+mkdir -p /dev/shm
+if ! mountpoint -q /dev/shm 2>/dev/null; then
+    mount -t tmpfs tmpfs /dev/shm 2>/dev/null || true
+fi
+chmod 1777 /dev/shm 2>/dev/null || true
+
+rm -rf /tmp/.X*-lock /tmp/.X11-unix /tmp/bspwm*
+mkdir -p /tmp/.X11-unix
+chmod 1777 /tmp/.X11-unix
+mkdir -p /dev/graphics /dev/input
+ln -sf /dev/null /dev/tty0 2>/dev/null || true
+ln -sf /dev/null /dev/tty1 2>/dev/null || true
+if [ -c /dev/fb0 ] && [ ! -e /dev/graphics/fb0 ]; then
+    ln -sf /dev/fb0 /dev/graphics/fb0 2>/dev/null || true
+elif [ -c /dev/graphics/fb0 ] && [ ! -e /dev/fb0 ]; then
+    ln -sf /dev/graphics/fb0 /dev/fb0 2>/dev/null || true
+fi
+
+# Отключаем автозасыпание экрана на время отладки
+mkdir -p /root/.cache/sxmo
+touch /root/.cache/sxmo/sxmo.noidle
+touch /root/.cache/sxmo/sxmo.nosuspend
+echo 0 > /tmp/screen_timeout
+
+# Обеспечиваем симлинк тачскрина для lisgd
+mkdir -p /dev/input/by-path
+ln -sf /dev/input/event2 /dev/input/by-path/first-touchscreen 2>/dev/null || true
+
+echo "3. Сбрасываем аппаратные оверлеи MediaTek и включаем подсветку..."
+/usr/bin/python3 /usr/local/bin/reset_mtk_overlays.py 2>/dev/null || true
+echo on > /sys/power/state 2>/dev/null || true
+echo 255 > /sys/class/leds/lcd-backlight/brightness 2>/dev/null || true
+
+echo "4. Запускаем калиброванный мост тачскрина и сенсорных кнопок..."
+/usr/bin/python3 /usr/local/bin/touch_bridge.py </dev/null >/tmp/touch_bridge.log 2>&1 &
+TOUCH_PID=$!
+
+# Ждем пока мост создаст устройства uinput и симлинки (до 8 секунд)
+TOUCH_READY=0
+for i in $(seq 1 40); do
+    if [ -e /dev/input/touch_pointer ] && [ -e /dev/input/virt_wheel ]; then
+        echo "Устройства тачскрина готовы (за шаг $i)!"
+        TOUCH_READY=1
+        break
+    fi
+    sleep 0.2
+done
+if [ "$TOUCH_READY" -ne 1 ]; then
+    echo "ВНИМАНИЕ: таймаут ожидания /dev/input/touch_pointer!"
+fi
+
+echo "5. Запускаем аппаратный MediaTek VSync-синхронизатор..."
+/usr/bin/python3 /usr/local/bin/mtk_flusher.py </dev/null >/dev/null 2>&1 &
+FLUSHER_PID=$!
+
+echo "6. Запускаем графический сервер Xorg..."
+/usr/bin/Xorg :0 vt1 -config /etc/X11/xorg.conf -novtswitch -sharevts -noreset -ac -listen tcp </dev/null >/var/log/xorg_screen.log 2>&1 &
+XORG_PID=$!
+
+# Ожидание сокета дисплея
+READY=0
+for i in $(seq 1 30); do
+    if [ -S /tmp/.X11-unix/X0 ]; then
+        READY=1
+        echo "Xorg дисплей готов (сокет :0 активен)!"
+        break
+    fi
+    sleep 0.3
+done
+
+if [ "$READY" -ne 1 ]; then
+    echo "ОШИБКА: Xorg не смог поднять сокет дисплея :0! Лог:"
+    cat /var/log/xorg_screen.log
+    exit 1
+fi
+
+DISPLAY=:0 /usr/bin/xset s off -dpms 2>/dev/null || true
+
+echo "7. Запускаем демон аппаратных кнопок (Power / Vol+ / Vol- / Softkeys)..."
+/usr/bin/python3 /usr/local/bin/hw_keys_daemon.py </dev/null >/var/log/hw_keys.log 2>&1 &
+
+echo "8. Запускаем официальную мобильную среду Sxmo (postmarketOS DWM)..."
+DISPLAY=:0 /usr/bin/sxmo_xinit.sh </dev/null >/var/log/sxmo.log 2>&1 &
+SXMO_PID=$!
+
+echo "========================================================="
+echo "   SXMO MOBILE (DWM + LISGD) ЗАПУЩЕН НА LENOVO A2010!   "
+echo "========================================================="
+
+# Ожидаем завершения сессии
+while kill -0 $SXMO_PID 2>/dev/null; do
+    sleep 2
+done
+cleanup

@@ -1,0 +1,35 @@
+#!/bin/sh
+export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+export WEBKIT_DISABLE_SANDBOX_THIS_IS_DANGEROUS=1
+export LIBGL_ALWAYS_SOFTWARE=1
+export GDK_BACKEND=x11
+export DISPLAY=:0
+
+BROWSER="badwolf"
+URL="https://wikipedia.org"
+
+if [ "$1" = "dillo" ] || [ "$1" = "badwolf" ] || [ "$1" = "firefox" ]; then
+    BROWSER="$1"
+    [ "$BROWSER" = "firefox" ] && BROWSER="firefox-esr"
+    URL="${2:-https://wikipedia.org}"
+elif [ -n "$1" ]; then
+    URL="$1"
+fi
+
+# Ensure Xorg / Cyberdeck desktop is running
+if [ ! -S /tmp/.X11-unix/X0 ]; then
+    echo "Xorg не запущен, поднимаем сессию phone-desktop..."
+    nohup /usr/local/bin/phone-desktop </dev/null >/var/log/phone_desktop.log 2>&1 &
+    for i in $(seq 1 30); do
+        [ -S /tmp/.X11-unix/X0 ] && break
+        sleep 0.3
+    done
+    sleep 1
+fi
+
+echo "Запускаем браузер $BROWSER ($URL) на DISPLAY=:0..."
+if [ "$BROWSER" = "dillo" ]; then
+    exec /usr/bin/dillo "$URL"
+else
+    exec "/usr/bin/$BROWSER" "$URL"
+fi

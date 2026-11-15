@@ -1,0 +1,6 @@
+#!/bin/sh
+mount -o remount,exec /dev 2>/dev/null || true
+[ -c /dev/null ] || { rm -f /dev/null && mknod -m 666 /dev/null c 1 3; }
+mkdir -p /data/misc /data/gps_mnl /data/agps_supl
+[ -f /data/misc/mnl.prop ] || printf 'debug.debug_nmea=1\n' > /data/misc/mnl.prop
+python3 /usr/local/bin/mk-android-props.py

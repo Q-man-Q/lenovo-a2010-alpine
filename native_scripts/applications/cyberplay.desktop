@@ -1,0 +1,10 @@
+[Desktop Entry]
+Name=Видеоплеер
+Name[ru]=Видеоплеер
+Comment=Видео и аудио плеер CyberPlay
+Exec=/usr/local/bin/cyberplay %f
+Icon=applications-multimedia
+Terminal=false
+Type=Application
+Categories=AudioVideo;Video;Player;
+MimeType=video/mp4;video/x-matroska;video/webm;video/ogg;video/x-msvideo;audio/mpeg;audio/ogg;audio/flac;audio/x-wav;

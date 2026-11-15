@@ -1,0 +1,22 @@
+#!/bin/sh
+export DISPLAY=:0
+export PATH=/usr/local/bin:/usr/bin:/bin:/usr/local/sbin:/usr/sbin:/sbin
+
+CUR=$(cat /tmp/keyboard_layout 2>/dev/null || echo "ru")
+if [ "$CUR" = "ru" ]; then
+    echo "en" > /tmp/keyboard_layout
+else
+    echo "ru" > /tmp/keyboard_layout
+fi
+
+# If keyboard is currently open, switch layout live
+if killall matchbox-keyboard 2>/dev/null; then
+    sleep 0.1
+    bspc node -p south -o 0.68
+    NEW=$(cat /tmp/keyboard_layout)
+    if [ "$NEW" = "ru" ]; then
+        matchbox-keyboard ru </dev/null >/dev/null 2>&1 &
+    else
+        matchbox-keyboard </dev/null >/dev/null 2>&1 &
+    fi
+fi

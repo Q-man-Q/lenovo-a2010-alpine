@@ -1,0 +1,4 @@
+#!/bin/sh
+export DISPLAY=:0
+export PATH=/usr/local/bin:/usr/bin:/bin:/usr/local/sbin:/usr/sbin:/sbin
+exec /usr/bin/sxmo_keyboard.sh toggle

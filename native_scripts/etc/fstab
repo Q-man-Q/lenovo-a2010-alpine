@@ -1,0 +1,8 @@
+/dev/mmcblk0p22	/		ext4	rw,noatime	0 1
+proc		/proc		proc	defaults	0 0
+sysfs		/sys		sysfs	defaults	0 0
+devpts		/dev/pts	devpts	gid=5,mode=620	0 0
+tmpfs		/tmp		tmpfs	defaults	0 0
+tmpfs		/run		tmpfs	defaults,mode=0755	0 0
+/dev/mmcblk0p20	/system		ext4	ro,noatime	0 0
+UUID=77f97808-d667-4daf-9196-323a74feb7ea /mnt/sd ext4 ro,nofail,noatime 0 0

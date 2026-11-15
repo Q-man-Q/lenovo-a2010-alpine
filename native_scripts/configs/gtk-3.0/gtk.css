@@ -1,0 +1,22 @@
+/* Touch-Friendly Mobile GTK3 Theme Overrides (pmOS Phosh / TokyoNight inspired) */
+button {
+    min-height: 32px;
+    min-width: 32px;
+    padding: 6px 10px;
+}
+
+entry {
+    min-height: 32px;
+    padding: 4px 8px;
+}
+
+menuitem {
+    min-height: 30px;
+    padding: 6px 10px;
+}
+
+scrollbar slider {
+    min-width: 12px;
+    min-height: 36px;
+    border-radius: 6px;
+}

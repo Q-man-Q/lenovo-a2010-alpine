@@ -1,0 +1,9 @@
+#!/bin/sh
+export DISPLAY=:0
+export PATH=/usr/local/bin:/usr/bin:/bin:/usr/local/sbin:/usr/sbin:/sbin
+
+if /bin/busybox pkill -x rofi 2>/dev/null; then
+    exit 0
+else
+    nohup rofi -show drun -show-icons -hover-select -me-select-entry '' -me-accept-entry MousePrimary </dev/null >/dev/null 2>&1 &
+fi

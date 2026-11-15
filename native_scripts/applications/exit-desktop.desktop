@@ -1,0 +1,10 @@
+[Desktop Entry]
+Version=1.0
+Name=Headless Mode
+Name[ru]=Погасить экран (Headless)
+Comment=Stop X11 GUI and turn off display while keeping SSH active
+Exec=/usr/bin/bspc quit
+Icon=system-log-out
+Terminal=false
+Type=Application
+NoDisplay=true

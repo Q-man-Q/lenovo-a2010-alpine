@@ -1,0 +1,60 @@
+configuration {
+    font: "Sans Bold 13";
+    show-icons: false;
+    hover-select: true;
+    me-select-entry: "";
+    me-accept-entry: "MousePrimary";
+}
+
+window {
+    width: 450px;
+    height: 360px;
+    border: 2px;
+    border-color: #f7768e;
+    border-radius: 12px;
+    background-color: #1a1b26;
+    padding: 16px;
+}
+
+mainbox {
+    background-color: transparent;
+    spacing: 12px;
+    children: [ message, listview ];
+}
+
+message {
+    background-color: #16161e;
+    border-radius: 8px;
+    padding: 12px;
+}
+
+textbox {
+    text-color: #f7768e;
+    font: "Sans Bold 13";
+    horizontal-align: 0.5;
+}
+
+listview {
+    background-color: transparent;
+    columns: 1;
+    lines: 4;
+    spacing: 10px;
+}
+
+element {
+    background-color: #24283b;
+    border-radius: 8px;
+    padding: 14px;
+    horizontal-align: 0.5;
+}
+
+element selected {
+    background-color: #f7768e;
+    text-color: #1a1b26;
+}
+
+element-text {
+    text-color: inherit;
+    horizontal-align: 0.5;
+    font: "Sans Bold 13";
+}

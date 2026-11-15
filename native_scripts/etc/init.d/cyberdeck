@@ -1,0 +1,23 @@
+#!/sbin/openrc-run
+
+description="Lenovo A2010 Mobile Tiling Cyberdeck Desktop"
+
+depend() {
+    need dev localmount
+    after usbnet sshd
+}
+
+start() {
+    ebegin "Starting Cyberdeck Desktop & Hardware Keys Daemon"
+    start-stop-daemon --start --background --make-pidfile --pidfile /run/hw_keys.pid --exec /usr/bin/python3 -- /usr/local/bin/hw_keys_daemon.py
+    start-stop-daemon --start --background --make-pidfile --pidfile /run/cyberdeck.pid --exec /usr/local/bin/phone-desktop
+    eend $?
+}
+
+stop() {
+    ebegin "Stopping Cyberdeck Desktop"
+    start-stop-daemon --stop --pidfile /run/cyberdeck.pid 2>/dev/null || true
+    start-stop-daemon --stop --pidfile /run/hw_keys.pid 2>/dev/null || true
+    killall -9 Xorg bspwm tint2 2>/dev/null || true
+    eend 0
+}

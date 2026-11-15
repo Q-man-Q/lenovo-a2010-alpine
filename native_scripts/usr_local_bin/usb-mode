@@ -1,0 +1,58 @@
+#!/bin/sh
+export DISPLAY=:0
+GADGET="/sys/class/android_usb/android0"
+IMG="/var/lib/usbboot/alpine-usb.img"
+STATE_FILE="/tmp/usb_mode"
+
+set_flash() {
+    echo "flash" > "$STATE_FILE"
+    if [ -d "$GADGET" ]; then
+        echo 0 > "$GADGET/enable" 2>/dev/null || true
+        sleep 0.2
+        echo 17EF > "$GADGET/idVendor" 2>/dev/null || true
+        echo 2005 > "$GADGET/idProduct" 2>/dev/null || true
+        echo 0 > "$GADGET/bDeviceClass" 2>/dev/null || true
+        echo 0 > "$GADGET/bDeviceSubClass" 2>/dev/null || true
+        echo 0 > "$GADGET/bDeviceProtocol" 2>/dev/null || true
+        echo 0 > "$GADGET/f_mass_storage/lun/ro" 2>/dev/null || true
+        echo "$IMG" > "$GADGET/f_mass_storage/lun/file" 2>/dev/null || true
+        echo mass_storage > "$GADGET/functions" 2>/dev/null || true
+        echo 1 > "$GADGET/enable" 2>/dev/null || true
+    fi
+    notify-send "USB режим" "Загрузочная флешка (ALPINEUSB)" 2>/dev/null || true
+}
+
+set_rndis() {
+    echo "rndis" > "$STATE_FILE"
+    if [ -d "$GADGET" ]; then
+        echo 0 > "$GADGET/enable" 2>/dev/null || true
+        sleep 0.2
+        echo "" > "$GADGET/f_mass_storage/lun/file" 2>/dev/null || true
+        echo 17EF > "$GADGET/idVendor" 2>/dev/null || true
+        echo 2004 > "$GADGET/idProduct" 2>/dev/null || true
+        echo 224 > "$GADGET/bDeviceClass" 2>/dev/null || true
+        echo rndis > "$GADGET/functions" 2>/dev/null || true
+        echo 1 > "$GADGET/enable" 2>/dev/null || true
+    fi
+    notify-send "USB режим" "Сеть RNDIS (SSH 10.42.0.2)" 2>/dev/null || true
+}
+
+case "$1" in
+    flash)
+        set_flash
+        ;;
+    rndis)
+        set_rndis
+        ;;
+    toggle)
+        CUR=$(cat "$STATE_FILE" 2>/dev/null || echo "rndis")
+        if [ "$CUR" = "flash" ]; then
+            set_rndis
+        else
+            set_flash
+        fi
+        ;;
+    status|*)
+        cat "$STATE_FILE" 2>/dev/null || echo "rndis"
+        ;;
+esac

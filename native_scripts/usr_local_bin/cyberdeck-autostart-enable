@@ -1,0 +1,4 @@
+#!/bin/sh
+rm -f /data/no_cyberdeck
+rc-update add cyberdeck default >/dev/null 2>&1 || true
+echo "Автозапуск Cyberdeck включен. При включении телефон сразу поднимет X11 + BSPWM."

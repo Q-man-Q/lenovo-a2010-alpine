@@ -1,0 +1,14 @@
+! Space to setup configversion
+! configversion: 7bff124b2de16292fe6e7a7e5d3322ae
+
+dmenu.font: Sxmo:size=13
+dwm.font: Sxmo:size=9
+st.font: Sxmo:size=10
+svkbd.font: Sxmo:size=11
+
+! Set DPI for 480x854 screen (compact scale, normal app sizes)
+Xft.dpi: 120
+Xft.antialias: true
+Xft.rgba: rgb
+Xft.hinting: true
+Xft.hintstyle: hintslight

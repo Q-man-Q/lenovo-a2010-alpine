@@ -1,0 +1,68 @@
+# Tint2 Top Status Bar (Android / Phosh style for Lenovo A2010 480x854)
+
+# Background 1: Top bar background
+rounded = 0
+border_width = 1
+border_sides = b
+border_color = #24283b 100
+background_color = #16161e 100
+
+# Background 2: Pill button
+rounded = 4
+border_width = 1
+border_color = #414868 80
+background_color = #24283b 100
+
+# Panel
+panel_monitor = all
+panel_position = top center horizontal
+panel_size = 100% 36
+panel_margin = 0 0
+panel_padding = 4 3 6
+panel_background_id = 1
+panel_dock = 0
+panel_layer = top
+strut_policy = follow_size
+
+# Items: Layout Button | Telemetry Execp | Clock | Quick Settings Button
+panel_items = PECP
+
+# Button 1: Layout Toggle (Monocle / Split)
+button = new
+button_text = 📐 Режим
+button_font = Sans Bold 10
+button_font_color = #bb9af7 100
+button_background_id = 2
+button_padding = 10 4
+button_lclick_command = /usr/local/bin/toggle-layout
+
+# Execp: Battery, Temp, RAM (tapping opens Quick Settings Shade)
+execp = new
+execp_command = /usr/local/bin/status-bar-info
+execp_interval = 10
+execp_continuous = 0
+execp_has_icon = 0
+execp_cache_icon = 0
+execp_font = Sans Bold 9
+execp_font_color = #9ece6a 100
+execp_padding = 8 4
+execp_background_id = 0
+execp_centered = 1
+execp_lclick_command = /usr/local/bin/cyberdeck-qs
+
+# Clock
+time1_format = %H:%M
+time1_font = Sans Bold 10
+clock_font_color = #c0caf5 100
+clock_padding = 8 4
+clock_background_id = 0
+clock_lclick_command = /usr/local/bin/cyberdeck-qs
+
+# Button 2: Quick Settings Shade Trigger
+button = new
+button_text = ⚙ Шторка
+button_font = Sans Bold 10
+button_font_color = #7aa2f7 100
+button_background_id = 2
+button_padding = 12 4
+button_lclick_command = /usr/local/bin/cyberdeck-qs

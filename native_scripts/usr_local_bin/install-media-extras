@@ -1,0 +1,7 @@
+#!/bin/sh
+# Установка дополнительных кодеков GStreamer (MP4/MKV/H.264/AAC) и консольного mpv из репозитория Alpine
+export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+
+echo "[*] Обновление индексов apk и установка лёгких медиа-пакетов (gst-plugins-good, gst-libav, mpv, feh)..."
+apk update && apk add --no-cache gst-plugins-good gst-libav mpv feh
+echo "[+] Готово! Все видеокодеки (MP4/H.264/HEVC/WebM/MKV) для КиберПлеера и mpv установлены."

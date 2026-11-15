@@ -1,0 +1,8 @@
+[Desktop Entry]
+Name=Layout
+Name[ru]=Сменить раскладку (RU/EN)
+Comment=Switch Onscreen Keyboard Layout
+Exec=/usr/local/bin/toggle-keyboard-lang
+Icon=preferences-desktop-locale
+Terminal=false
+Type=Application

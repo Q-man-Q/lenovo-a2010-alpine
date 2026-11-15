@@ -1,0 +1,5 @@
+#!/bin/sh
+echo "Запускаем графическую сессию Cyberdeck..."
+nohup /usr/local/bin/phone-desktop </dev/null >/var/log/phone_desktop.log 2>&1 &
+sleep 2
+free -m

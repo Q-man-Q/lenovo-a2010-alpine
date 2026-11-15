@@ -1,0 +1,19 @@
+[Default Applications]
+image/jpeg=cyberview.desktop
+image/png=cyberview.desktop
+image/webp=cyberview.desktop
+image/gif=cyberview.desktop
+image/bmp=cyberview.desktop
+image/svg+xml=cyberview.desktop
+image/avif=cyberview.desktop
+image/jxl=cyberview.desktop
+image/tiff=cyberview.desktop
+video/mp4=cyberplay.desktop
+video/x-matroska=cyberplay.desktop
+video/webm=cyberplay.desktop
+video/ogg=cyberplay.desktop
+video/x-msvideo=cyberplay.desktop
+audio/mpeg=cyberplay.desktop
+audio/ogg=cyberplay.desktop
+audio/flac=cyberplay.desktop
+audio/x-wav=cyberplay.desktop

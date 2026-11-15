@@ -1,0 +1,18 @@
+#!/bin/sh
+export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+
+TS=$(date +%Y%m%d_%H%M%S 2>/dev/null || echo $$)
+mkdir -p /root/Pictures
+OUT_PATH="${1:-/root/Pictures/screenshot_${TS}.png}"
+
+echo "Делаем прямой скриншот из Linux Framebuffer (/dev/graphics/fb0)..."
+/usr/bin/python3 /usr/local/bin/fbscreenshot.py "$OUT_PATH"
+
+if [ -f "$OUT_PATH" ]; then
+    ln -sf "$OUT_PATH" /root/latest_screenshot.png 2>/dev/null || true
+    SIZE=$(ls -lh "$OUT_PATH" | awk '{print $5}')
+    echo "Скриншот готов: $OUT_PATH ($SIZE)"
+else
+    echo "Ошибка создания снимка."
+    exit 1
+fi

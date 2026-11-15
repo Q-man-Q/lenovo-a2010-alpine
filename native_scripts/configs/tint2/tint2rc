@@ -1,0 +1,59 @@
+# Tint2 Bottom Task Bar (Clean Open Windows Switcher, no extra buttons)
+
+# Backgrounds
+# 1: Panel
+rounded = 0
+border_width = 1
+border_sides = t
+border_color = #7aa2f7 80
+background_color = #1a1b26 100
+
+# 2: Default task button
+rounded = 6
+border_width = 1
+border_color = #414868 80
+background_color = #24283b 100
+
+# 3: Active task
+rounded = 6
+border_width = 1
+border_color = #7aa2f7 100
+background_color = #3d59a1 100
+
+# Panel
+panel_monitor = all
+panel_position = bottom center horizontal
+panel_size = 100% 42
+panel_margin = 0 0
+panel_padding = 6 3 6
+panel_background_id = 1
+panel_dock = 0
+panel_layer = top
+strut_policy = follow_size
+
+# Items: Taskbar ONLY (Menu, Keyboard, Back are on physical capacitive buttons below screen)
+panel_items = T
+
+# Taskbar (Open Windows)
+taskbar_mode = single_desktop
+taskbar_padding = 2 2 6
+taskbar_background_id = 0
+taskbar_active_background_id = 0
+taskbar_distribute_size = 1
+task_text = 1
+task_icon = 1
+task_font = Sans Bold 9
+task_font_color = #c0caf5 100
+task_active_font_color = #ffffff 100
+task_centered = 1
+task_maximum_size = 220 36
+task_padding = 8 4
+task_background_id = 2
+task_active_background_id = 3
+
+# Mouse actions on tasks: switch/minimize windows
+mouse_left = toggle
+mouse_middle = none
+mouse_right = none
+mouse_scroll_up = prev_task
+mouse_scroll_down = next_task

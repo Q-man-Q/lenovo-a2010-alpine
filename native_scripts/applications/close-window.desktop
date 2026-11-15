@@ -1,0 +1,8 @@
+[Desktop Entry]
+Name=Close
+Comment=Close active window
+Exec=/usr/bin/bspc node -c
+Icon=edit-delete
+Terminal=false
+Type=Application
+NoDisplay=true

@@ -1,0 +1,70 @@
+configuration {
+    font: "Sans Bold 12";
+    show-icons: false;
+    hover-select: true;
+    me-select-entry: "";
+    me-accept-entry: "MousePrimary";
+}
+
+window {
+    location: north;
+    anchor: north;
+    y-offset: 38px;
+    width: 468px;
+    height: 495px;
+    border: 2px;
+    border-color: #7aa2f7;
+    border-radius: 12px;
+    background-color: #1a1b26;
+    padding: 12px;
+}
+
+mainbox {
+    background-color: transparent;
+    spacing: 10px;
+    children: [ message, listview ];
+}
+
+message {
+    background-color: #16161e;
+    border: 1px;
+    border-color: #414868;
+    border-radius: 8px;
+    padding: 10px;
+}
+
+textbox {
+    text-color: #7dcfff;
+    font: "Sans Bold 11";
+    horizontal-align: 0.5;
+}
+
+listview {
+    background-color: transparent;
+    columns: 2;
+    lines: 6;
+    spacing: 8px;
+    fixed-height: true;
+    fixed-columns: true;
+}
+
+element {
+    background-color: #24283b;
+    border: 1px;
+    border-color: #414868;
+    border-radius: 10px;
+    padding: 13px 6px;
+}
+
+element selected {
+    background-color: #3d59a1;
+    border-color: #7aa2f7;
+    text-color: #ffffff;
+}
+
+element-text {
+    text-color: #c0caf5;
+    horizontal-align: 0.5;
+    vertical-align: 0.5;
+    font: "Sans Bold 12";
+}

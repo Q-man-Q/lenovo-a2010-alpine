@@ -1,0 +1,379 @@
+#!/usr/bin/python3
+# -*- coding: utf-8 -*-
+"""Minimal GTK3 voice recorder for Lenovo A2010 (ALSA hw:0,1 + MT6328 ADC1)."""
+
+import glob
+import os
+import signal
+import subprocess
+import threading
+import time
+import wave
+from datetime import datetime
+
+import gi
+gi.require_version("Gtk", "3.0")
+from gi.repository import GLib, Gtk, Pango
+
+REC_DIR = "/root/Recordings"
+os.makedirs(REC_DIR, exist_ok=True)
+
+# Hardware PGA1 is kept at 30Db; software boost matches Android's SwAgcGain
+BOOST_LEVELS = [
+    ("24dB", 24),
+    ("32dB", 32),
+    ("38dB", 38),
+]
+
+
+class RecorderWindow(Gtk.Window):
+    def __init__(self):
+        super().__init__(title="Recorder")
+        self.set_default_size(460, 440)
+        self.set_border_width(6)
+
+        self.boost_idx = 1  # +32dB default
+        self.rec_proc = None
+        self.rec_raw_path = None
+        self.rec_final_path = None
+        self.rec_start = 0.0
+        self.play_proc = None
+        self.files = []
+
+        self._build_ui()
+        self.refresh_list()
+        self.connect("destroy", self._on_destroy)
+        threading.Thread(target=self._init_mic, daemon=True).start()
+
+    def _build_ui(self):
+        root = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
+        self.add(root)
+
+        top = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
+        self.status_label = Gtk.Label(label="Ready")
+        self.status_label.set_xalign(0.0)
+        self.status_label.set_ellipsize(Pango.EllipsizeMode.END)
+        top.pack_start(self.status_label, True, True, 0)
+
+        lbl_txt = BOOST_LEVELS[self.boost_idx][0]
+        self.btn_gain = Gtk.Button(label=f"Mic: +{lbl_txt}")
+        self.btn_gain.connect("clicked", self.on_gain_clicked)
+        top.pack_end(self.btn_gain, False, False, 0)
+        root.pack_start(top, False, False, 0)
+
+        scroll = Gtk.ScrolledWindow()
+        scroll.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
+        scroll.set_vexpand(True)
+        scroll.set_hexpand(True)
+
+        self.listbox = Gtk.ListBox()
+        self.listbox.set_selection_mode(Gtk.SelectionMode.SINGLE)
+        scroll.add(self.listbox)
+        root.pack_start(scroll, True, True, 0)
+
+        bar = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
+        self.btn_rec = Gtk.Button(label="Record")
+        self.btn_rec.set_size_request(-1, 38)
+        self.btn_rec.connect("clicked", self.on_rec_clicked)
+        bar.pack_start(self.btn_rec, True, True, 0)
+
+        self.btn_play = Gtk.Button(label="Play")
+        self.btn_play.set_size_request(-1, 38)
+        self.btn_play.connect("clicked", self.on_play_clicked)
+        bar.pack_start(self.btn_play, True, True, 0)
+
+        self.btn_del = Gtk.Button(label="Del")
+        self.btn_del.set_size_request(-1, 38)
+        self.btn_del.connect("clicked", self.on_del_clicked)
+        bar.pack_start(self.btn_del, False, False, 0)
+
+        root.pack_start(bar, False, False, 0)
+
+    def _init_mic(self):
+        if not os.path.exists("/tmp/audio_route"):
+            subprocess.run(
+                ["/usr/local/bin/setup-audio", "speaker"],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+        # Ensure MT6328 main board mic (ADC1, DCCECMDIFFMODE, 30Db) is routed
+        for ctl, val in (
+            ("Audio_ADC_1_Sel", "Preamp"),
+            ("Audio_ADC_2_Sel", "Preamp"),
+            ("Audio_MIC1_Mode_Select", "DCCECMDIFFMODE"),
+            ("Audio_MIC2_Mode_Select", "DCCECMDIFFMODE"),
+            ("Audio_MicSource1_Setting", "ADC1"),
+            ("Audio_ADC_1_Switch", "On"),
+            ("Audio_ADC_2_Switch", "On"),
+            ("Audio_Preamp1_Switch", "IN_ADC1"),
+            ("Audio_Preamp2_Switch", "IN_ADC1"),
+            ("Audio_PGA1_Setting", "30Db"),
+            ("Audio_PGA2_Setting", "30Db"),
+        ):
+            subprocess.run(
+                ["amixer", "-c", "0", "cset", f"name='{ctl}'", val],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+
+    def on_gain_clicked(self, _widget):
+        self.boost_idx = (self.boost_idx + 1) % len(BOOST_LEVELS)
+        lbl_txt = BOOST_LEVELS[self.boost_idx][0]
+        self.btn_gain.set_label(f"Mic: +{lbl_txt}")
+
+    def _wav_info(self, path):
+        try:
+            size_kb = os.path.getsize(path) // 1024
+            with wave.open(path, "rb") as w:
+                rate = w.getframerate() or 48000
+                secs = int(round(w.getnframes() / float(rate)))
+            mm, ss = divmod(secs, 60)
+            return f"{os.path.basename(path)}  [{mm:02d}:{ss:02d}, {size_kb} KB]"
+        except Exception:
+            size_kb = os.path.getsize(path) // 1024 if os.path.exists(path) else 0
+            return f"{os.path.basename(path)}  [{size_kb} KB]"
+
+    def refresh_list(self, select_path=None):
+        for child in self.listbox.get_children():
+            self.listbox.remove(child)
+
+        raw = sorted(
+            glob.glob(os.path.join(REC_DIR, "*.wav")),
+            key=os.path.getmtime,
+            reverse=True,
+        )
+        self.files = []
+        for p in raw:
+            if p.endswith(".raw.wav"):
+                continue
+            try:
+                if os.path.getsize(p) <= 44 and p != self.rec_final_path:
+                    os.remove(p)
+                    continue
+            except OSError:
+                continue
+            self.files.append(p)
+
+        selected_row = None
+        for idx, p in enumerate(self.files):
+            row = Gtk.ListBoxRow()
+            lbl = Gtk.Label(label=self._wav_info(p))
+            lbl.set_xalign(0.0)
+            lbl.set_margin_top(6)
+            lbl.set_margin_bottom(6)
+            lbl.set_margin_start(6)
+            lbl.set_margin_end(6)
+            lbl.set_ellipsize(Pango.EllipsizeMode.END)
+            row.add(lbl)
+            self.listbox.add(row)
+            if (select_path and p == select_path) or (not select_path and idx == 0):
+                selected_row = row
+
+        self.listbox.show_all()
+        if selected_row is not None:
+            self.listbox.select_row(selected_row)
+
+    def _selected_file(self):
+        row = self.listbox.get_selected_row()
+        if row is None:
+            return None
+        idx = row.get_index()
+        if 0 <= idx < len(self.files):
+            return self.files[idx]
+        return None
+
+    def on_rec_clicked(self, _widget):
+        if self.rec_proc is not None and self.rec_proc.poll() is None:
+            self._stop_recording()
+            return
+
+        self._stop_playback()
+        self._init_mic()
+        ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+        self.rec_raw_path = os.path.join(REC_DIR, f".rec_{ts}.raw.wav")
+        self.rec_final_path = os.path.join(REC_DIR, f"rec_{ts}.wav")
+        try:
+            self.rec_proc = subprocess.Popen(
+                [
+                    "arecord",
+                    "-D",
+                    "hw:0,1",
+                    "-f",
+                    "S16_LE",
+                    "-c",
+                    "2",
+                    "-r",
+                    "48000",
+                    self.rec_raw_path,
+                ],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+            self.rec_start = time.time()
+            self.btn_rec.set_label("Stop")
+            self.btn_play.set_sensitive(False)
+            self.btn_del.set_sensitive(False)
+            self.status_label.set_text("Recording 00:00...")
+            GLib.timeout_add(500, self._update_rec_timer)
+        except Exception as exc:
+            self.rec_proc = None
+            self.status_label.set_text(f"Record error: {exc}")
+
+    def _update_rec_timer(self):
+        if self.rec_proc is None or self.rec_proc.poll() is not None:
+            return False
+        elapsed = int(time.time() - self.rec_start)
+        mm, ss = divmod(elapsed, 60)
+        kb = (
+            os.path.getsize(self.rec_raw_path) // 1024
+            if (self.rec_raw_path and os.path.exists(self.rec_raw_path))
+            else 0
+        )
+        self.status_label.set_text(f"Recording {mm:02d}:{ss:02d} ({kb} KB)")
+        return True
+
+    def _stop_recording(self):
+        proc = self.rec_proc
+        self.rec_proc = None
+        raw_path = self.rec_raw_path
+        final_path = self.rec_final_path
+        self.rec_raw_path = None
+        self.rec_final_path = None
+
+        if proc is not None and proc.poll() is None:
+            try:
+                proc.send_signal(signal.SIGINT)
+                proc.wait(timeout=2)
+            except Exception:
+                try:
+                    proc.kill()
+                except Exception:
+                    pass
+
+        self.status_label.set_text("Processing audio...")
+        boost_db = BOOST_LEVELS[self.boost_idx][1]
+
+        def finish_worker():
+            ok = False
+            if raw_path and os.path.exists(raw_path) and os.path.getsize(raw_path) > 44:
+                # Copy ADC1 (c0) to both stereo channels, strip DC offset (<80Hz), apply boost
+                af = f"pan=stereo|c0=c0|c1=c0,highpass=f=80,volume={boost_db}dB"
+                rc = subprocess.run(
+                    [
+                        "ffmpeg",
+                        "-hide_banner",
+                        "-loglevel",
+                        "error",
+                        "-y",
+                        "-i",
+                        raw_path,
+                        "-af",
+                        af,
+                        final_path,
+                    ],
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                ).returncode
+                if rc == 0 and os.path.exists(final_path):
+                    ok = True
+                    try:
+                        os.remove(raw_path)
+                    except OSError:
+                        pass
+                else:
+                    try:
+                        os.replace(raw_path, final_path)
+                        ok = True
+                    except OSError:
+                        pass
+            GLib.idle_add(self._on_finish_saved, final_path if ok else None)
+
+        threading.Thread(target=finish_worker, daemon=True).start()
+
+    def _on_finish_saved(self, saved_path):
+        self.btn_rec.set_label("Record")
+        self.btn_play.set_sensitive(True)
+        self.btn_del.set_sensitive(True)
+        self.refresh_list(select_path=saved_path)
+        if saved_path and os.path.exists(saved_path):
+            kb = os.path.getsize(saved_path) // 1024
+            self.status_label.set_text(f"Saved {os.path.basename(saved_path)} ({kb} KB)")
+        else:
+            self.status_label.set_text("Ready")
+        return False
+
+    def on_play_clicked(self, _widget):
+        if self.play_proc is not None and self.play_proc.poll() is None:
+            self._stop_playback()
+            self.status_label.set_text("Playback stopped")
+            return
+
+        path = self._selected_file()
+        if not path or not os.path.exists(path):
+            self.status_label.set_text("No recording selected")
+            return
+
+        try:
+            self.play_proc = subprocess.Popen(
+                ["aplay", "-D", "hw:0,0", path],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+            self.btn_play.set_label("Stop")
+            self.status_label.set_text(f"Playing {os.path.basename(path)}...")
+            GLib.timeout_add(300, self._check_play_proc)
+        except Exception as exc:
+            self.play_proc = None
+            self.status_label.set_text(f"Play error: {exc}")
+
+    def _check_play_proc(self):
+        if self.play_proc is None:
+            return False
+        if self.play_proc.poll() is None:
+            return True
+        self.play_proc = None
+        self.btn_play.set_label("Play")
+        self.status_label.set_text("Ready")
+        return False
+
+    def _stop_playback(self):
+        proc = self.play_proc
+        self.play_proc = None
+        if proc is not None and proc.poll() is None:
+            try:
+                proc.terminate()
+                proc.wait(timeout=1)
+            except Exception:
+                try:
+                    proc.kill()
+                except Exception:
+                    pass
+        self.btn_play.set_label("Play")
+
+    def on_del_clicked(self, _widget):
+        self._stop_playback()
+        path = self._selected_file()
+        if not path:
+            return
+        try:
+            os.remove(path)
+            self.status_label.set_text(f"Deleted {os.path.basename(path)}")
+        except OSError as exc:
+            self.status_label.set_text(f"Delete error: {exc}")
+        self.refresh_list()
+
+    def _on_destroy(self, *_args):
+        if self.rec_proc is not None and self.rec_proc.poll() is None:
+            try:
+                self.rec_proc.send_signal(signal.SIGINT)
+                self.rec_proc.wait(timeout=1)
+            except Exception:
+                pass
+        self._stop_playback()
+        Gtk.main_quit()
+
+
+if __name__ == "__main__":
+    win = RecorderWindow()
+    win.show_all()
+    Gtk.main()

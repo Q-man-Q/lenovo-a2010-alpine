@@ -1,0 +1,85 @@
+#!/bin/sh
+# Cyberdeck Camera Snap Utility (Native Alpine + Minimal HAL Stubs)
+
+usage() {
+    echo "Использование: camshot [-f|--front] [-o <file.jpg>] [-w <warmup_ms>]"
+    echo "  -f, --front   Использовать фронтальную камеру (по умолчанию основная 5MP)"
+    echo "  -o <path>     Путь сохранения (по умолчанию /root/Pictures/cam_YYYYMMDD_HHMMSS.jpg)"
+    echo "  -w <ms>       Время экспозамера/баланса белого перед снимком (по умолчанию 1000мс)"
+    exit 1
+}
+
+CAMERA_ID=0
+WARMUP=1000
+ROTATE=1
+DATE_STR=$(date +%Y%m%d_%H%M%S)
+OUT_FILE="/root/Pictures/cam_${DATE_STR}.jpg"
+CUSTOM_OUT=""
+
+while [ $# -gt 0 ]; do
+    case "$1" in
+        -f|--front)
+            CAMERA_ID=1
+            shift
+            ;;
+        --no-rotate)
+            ROTATE=0
+            shift
+            ;;
+        -o|--output)
+            OUT_FILE="$2"
+            CUSTOM_OUT=1
+            shift 2
+            ;;
+        -w|--warmup)
+            WARMUP="$2"
+            shift 2
+            ;;
+        -h|--help)
+            usage
+            ;;
+        *)
+            if [ -z "$CUSTOM_OUT" ]; then
+                OUT_FILE="$1"
+                CUSTOM_OUT=1
+                shift
+            else
+                usage
+            fi
+            ;;
+    esac
+done
+
+mkdir -p "$(dirname "$OUT_FILE")"
+
+export ANDROID_ROOT=/system
+export ANDROID_DATA=/data
+export PATH=/system/bin:/system/xbin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+export LD_LIBRARY_PATH=/system/vendor/lib:/system/lib
+
+# Ensure servicemanager, AndroidStubServices, and mediaserver are active
+if ! pidof servicemanager >/dev/null 2>&1 || ! pidof mediaserver >/dev/null 2>&1 || ! ps | grep -v grep | grep -q "AndroidStubServices"; then
+    echo "[camshot] Инициализация сервисов камеры (servicemanager + stubs + mediaserver)..."
+    /bin/sh /data/run_stub_services.sh >> /data/stub_services.log 2>&1
+fi
+
+APP_PROC="/system/bin/app_process32"
+[ -x "$APP_PROC" ] || APP_PROC="/system/bin/app_process"
+
+CLASSPATH=/data/camshot.jar "$APP_PROC" /system/bin com.cyberdeck.CamShot "$OUT_FILE" "$CAMERA_ID" "$WARMUP"
+RET=$?
+
+if [ $RET -eq 0 ] && [ -f "$OUT_FILE" ]; then
+    if [ "$ROTATE" = "1" ]; then
+        python3 -c '
+import gi, sys
+gi.require_version("GdkPixbuf", "2.0")
+from gi.repository import GdkPixbuf
+p = sys.argv[1]
+pb = GdkPixbuf.Pixbuf.new_from_file(p)
+pb.rotate_simple(180).savev(p, "jpeg", ["quality"], ["95"])
+' "$OUT_FILE" 2>/dev/null || true
+    fi
+    echo "Снимок готов: $OUT_FILE"
+fi
+exit $RET

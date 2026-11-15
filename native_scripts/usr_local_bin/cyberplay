@@ -1,0 +1,342 @@
+#!/usr/bin/python3
+# -*- coding: utf-8 -*-
+"""
+CyberPlay — Ultra-Lightweight Touch Video & Audio Player for Lenovo A2010 (480x854)
+Built with Python 3 + GTK 3 + GStreamer 1.0 (GstVideo.VideoOverlay + ximagesink)
+Features:
+  - Direct X11 video surface embedding (zero GL/compositor overhead)
+  - Tap video area to Play / Pause
+  - Big thumb buttons: Open File, -10s, Play/Pause, +10s, Loop
+  - Touch seek slider with live MM:SS position / duration
+"""
+import os
+import sys
+
+import gi
+gi.require_version("Gtk", "3.0")
+gi.require_version("Gdk", "3.0")
+gi.require_version("GdkX11", "3.0")
+gi.require_version("Gst", "1.0")
+gi.require_version("GstVideo", "1.0")
+from gi.repository import Gtk, Gdk, GdkX11, Gst, GstVideo, GLib
+
+Gst.init(None)
+
+CSS = b"""
+window {
+    background-color: #1a1b26;
+    color: #c0caf5;
+    font-family: Sans;
+}
+.header-bar {
+    background-color: #16161e;
+    border-bottom: 1px solid #24283b;
+    padding: 4px 6px;
+}
+.title-lbl {
+    font-size: 11px;
+    font-weight: bold;
+    color: #7dcfff;
+}
+.video-area {
+    background-color: #000000;
+}
+.controls-box {
+    background-color: #16161e;
+    border-top: 1px solid #24283b;
+    padding: 6px;
+}
+.ctrl-btn {
+    background-color: #24283b;
+    color: #c0caf5;
+    font-size: 14px;
+    font-weight: bold;
+    border-radius: 8px;
+    padding: 8px 12px;
+    border: 1px solid #414868;
+}
+.ctrl-btn:active {
+    background-color: #3d59a1;
+}
+.play-btn {
+    background-color: #3d59a1;
+    color: #ffffff;
+    font-size: 15px;
+    font-weight: bold;
+    border-radius: 8px;
+    padding: 8px 16px;
+    border: 1px solid #7aa2f7;
+}
+.close-btn {
+    background-color: #24283b;
+    color: #f7768e;
+    font-size: 13px;
+    font-weight: bold;
+    border-radius: 8px;
+    padding: 6px 10px;
+    border: 1px solid #414868;
+}
+.time-lbl {
+    font-size: 11px;
+    color: #9ece6a;
+    font-weight: bold;
+}
+"""
+
+def fmt_time(ns):
+    if ns <= 0:
+        return "00:00"
+    sec = int(ns // Gst.SECOND)
+    m, s = divmod(sec, 60)
+    h, m = divmod(m, 60)
+    if h > 0:
+        return f"{h:d}:{m:02d}:{s:02d}"
+    return f"{m:02d}:{s:02d}"
+
+class CyberPlayApp(Gtk.Window):
+    def __init__(self, start_file=None):
+        super().__init__(title="КиберПлеер")
+        self.set_default_size(480, 770)
+        self.set_position(Gtk.WindowPosition.CENTER)
+
+        self.playing = False
+        self.loop_enabled = False
+        self.duration = Gst.CLOCK_TIME_NONE
+        self.seeking = False
+        self.xid = None
+        self.current_uri = None
+
+        self._apply_css()
+        self._build_ui()
+        self._setup_pipeline()
+
+        GLib.timeout_add(500, self._update_progress)
+
+        if start_file and os.path.exists(start_file):
+            GLib.idle_add(self.load_file, os.path.abspath(start_file))
+
+    def _apply_css(self):
+        prov = Gtk.CssProvider()
+        prov.load_from_data(CSS)
+        Gtk.StyleContext.add_provider_for_screen(
+            Gdk.Screen.get_default(), prov, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION
+        )
+
+    def _build_ui(self):
+        vbox = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
+        self.add(vbox)
+
+        # Header
+        hdr = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=4)
+        hdr.get_style_context().add_class("header-bar")
+
+        btn_open = Gtk.Button(label="📂 Открыть")
+        btn_open.get_style_context().add_class("ctrl-btn")
+        btn_open.connect("clicked", self.on_open_file)
+        hdr.pack_start(btn_open, False, False, 0)
+
+        self.lbl_title = Gtk.Label(label="КиберПлеер — Выберите файл")
+        self.lbl_title.get_style_context().add_class("title-lbl")
+        self.lbl_title.set_ellipsize(3)
+        hdr.pack_start(self.lbl_title, True, True, 4)
+
+        btn_close = Gtk.Button(label="✕")
+        btn_close.get_style_context().add_class("close-btn")
+        btn_close.connect("clicked", self.on_quit)
+        hdr.pack_end(btn_close, False, False, 0)
+
+        vbox.pack_start(hdr, False, False, 0)
+
+        # Video Surface
+        self.video_area = Gtk.DrawingArea()
+        self.video_area.set_hexpand(True)
+        self.video_area.set_vexpand(True)
+        self.video_area.get_style_context().add_class("video-area")
+        self.video_area.add_events(Gdk.EventMask.BUTTON_PRESS_MASK)
+        self.video_area.connect("realize", self.on_video_realize)
+        self.video_area.connect("button-press-event", lambda w, e: self.toggle_play(None))
+        vbox.pack_start(self.video_area, True, True, 0)
+
+        # Bottom Controls Box
+        cbox = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
+        cbox.get_style_context().add_class("controls-box")
+
+        # Timeline Row
+        trow = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
+        self.lbl_pos = Gtk.Label(label="00:00")
+        self.lbl_pos.get_style_context().add_class("time-lbl")
+        trow.pack_start(self.lbl_pos, False, False, 2)
+
+        self.slider = Gtk.Scale.new_with_range(Gtk.Orientation.HORIZONTAL, 0, 100, 1)
+        self.slider.set_draw_value(False)
+        self.slider.connect("button-press-event", self.on_slider_press)
+        self.slider.connect("button-release-event", self.on_slider_release)
+        trow.pack_start(self.slider, True, True, 0)
+
+        self.lbl_dur = Gtk.Label(label="00:00")
+        self.lbl_dur.get_style_context().add_class("time-lbl")
+        trow.pack_end(self.lbl_dur, False, False, 2)
+        cbox.pack_start(trow, False, False, 0)
+
+        # Transport Buttons Row
+        brow = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
+
+        btn_rew = Gtk.Button(label="⏪ −10с")
+        btn_rew.get_style_context().add_class("ctrl-btn")
+        btn_rew.connect("clicked", lambda w: self.seek_rel(-10))
+        brow.pack_start(btn_rew, True, True, 0)
+
+        self.btn_play = Gtk.Button(label="▶ ПУСК")
+        self.btn_play.get_style_context().add_class("play-btn")
+        self.btn_play.connect("clicked", self.toggle_play)
+        brow.pack_start(self.btn_play, True, True, 0)
+
+        btn_fwd = Gtk.Button(label="⏩ +10с")
+        btn_fwd.get_style_context().add_class("ctrl-btn")
+        btn_fwd.connect("clicked", lambda w: self.seek_rel(10))
+        brow.pack_start(btn_fwd, True, True, 0)
+
+        self.btn_loop = Gtk.Button(label="🔁 Выкл")
+        self.btn_loop.get_style_context().add_class("ctrl-btn")
+        self.btn_loop.connect("clicked", self.toggle_loop)
+        brow.pack_start(self.btn_loop, False, False, 0)
+
+        cbox.pack_start(brow, False, False, 0)
+        vbox.pack_end(cbox, False, False, 0)
+
+    def _setup_pipeline(self):
+        self.playbin = Gst.ElementFactory.make("playbin", "player")
+        vsink = Gst.ElementFactory.make("ximagesink", "vsink")
+        if vsink:
+            try:
+                vsink.set_property("force-aspect-ratio", True)
+            except Exception:
+                pass
+            self.playbin.set_property("video-sink", vsink)
+
+        bus = self.playbin.get_bus()
+        bus.add_signal_watch()
+        bus.enable_sync_message_emission()
+        bus.connect("message::eos", self.on_eos)
+        bus.connect("message::error", self.on_error)
+        bus.connect("sync-message::element", self.on_sync_message)
+
+    def on_video_realize(self, widget):
+        win = widget.get_window()
+        if win and hasattr(win, "get_xid"):
+            self.xid = win.get_xid()
+
+    def on_sync_message(self, bus, msg):
+        if msg.get_structure() is None:
+            return
+        if msg.get_structure().get_name() == "prepare-window-handle":
+            if self.xid:
+                msg.src.set_window_handle(self.xid)
+
+    def load_file(self, filepath):
+        self.playbin.set_state(Gst.State.NULL)
+        self.current_uri = Gst.filename_to_uri(filepath)
+        self.playbin.set_property("uri", self.current_uri)
+        self.lbl_title.set_text(os.path.basename(filepath))
+        self.duration = Gst.CLOCK_TIME_NONE
+        self.playbin.set_state(Gst.State.PLAYING)
+        self.playing = True
+        self.btn_play.set_label("⏸ ПАУЗА")
+
+    def toggle_play(self, widget):
+        if not self.current_uri:
+            self.on_open_file(None)
+            return
+        if self.playing:
+            self.playbin.set_state(Gst.State.PAUSED)
+            self.playing = False
+            self.btn_play.set_label("▶ ПУСК")
+        else:
+            self.playbin.set_state(Gst.State.PLAYING)
+            self.playing = True
+            self.btn_play.set_label("⏸ ПАУЗА")
+
+    def toggle_loop(self, widget):
+        self.loop_enabled = not self.loop_enabled
+        self.btn_loop.set_label("🔁 Вкл" if self.loop_enabled else "🔁 Выкл")
+
+    def seek_rel(self, delta_sec):
+        ok, pos = self.playbin.query_position(Gst.Format.TIME)
+        if ok:
+            target = max(0, pos + int(delta_sec * Gst.SECOND))
+            self.playbin.seek_simple(
+                Gst.Format.TIME, Gst.SeekFlags.FLUSH | Gst.SeekFlags.KEY_UNIT, target
+            )
+
+    def on_slider_press(self, widget, event):
+        self.seeking = True
+        return False
+
+    def on_slider_release(self, widget, event):
+        self.seeking = False
+        if self.duration != Gst.CLOCK_TIME_NONE and self.duration > 0:
+            pct = self.slider.get_value() / 100.0
+            target = int(self.duration * pct)
+            self.playbin.seek_simple(
+                Gst.Format.TIME, Gst.SeekFlags.FLUSH | Gst.SeekFlags.KEY_UNIT, target
+            )
+        return False
+
+    def _update_progress(self):
+        if not self.playing or self.seeking:
+            return True
+        ok_d, dur = self.playbin.query_duration(Gst.Format.TIME)
+        if ok_d and dur > 0:
+            self.duration = dur
+            self.lbl_dur.set_text(fmt_time(dur))
+        ok_p, pos = self.playbin.query_position(Gst.Format.TIME)
+        if ok_p:
+            self.lbl_pos.set_text(fmt_time(pos))
+            if self.duration > 0:
+                self.slider.set_value(min(100.0, (pos / float(self.duration)) * 100.0))
+        return True
+
+    def on_eos(self, bus, msg):
+        if self.loop_enabled:
+            self.playbin.seek_simple(
+                Gst.Format.TIME, Gst.SeekFlags.FLUSH | Gst.SeekFlags.KEY_UNIT, 0
+            )
+        else:
+            self.playbin.set_state(Gst.State.PAUSED)
+            self.playing = False
+            self.btn_play.set_label("▶ ПУСК")
+
+    def on_error(self, bus, msg):
+        err, _ = msg.parse_error()
+        self.lbl_title.set_text(f"Ошибка: {err.message[:40]}")
+        self.playbin.set_state(Gst.State.NULL)
+        self.playing = False
+        self.btn_play.set_label("▶ ПУСК")
+
+    def on_open_file(self, widget):
+        dlg = Gtk.FileChooserDialog(
+            title="Выбрать видео или аудио", parent=self, action=Gtk.FileChooserAction.OPEN
+        )
+        dlg.add_buttons(Gtk.STOCK_CANCEL, Gtk.ResponseType.CANCEL, Gtk.STOCK_OPEN, Gtk.ResponseType.OK)
+        dlg.set_current_folder("/root/Downloads" if os.path.isdir("/root/Downloads") else "/root")
+        if dlg.run() == Gtk.ResponseType.OK:
+            chosen = dlg.get_filename()
+            dlg.destroy()
+            if chosen:
+                self.load_file(chosen)
+        else:
+            dlg.destroy()
+
+    def on_quit(self, widget):
+        self.playbin.set_state(Gst.State.NULL)
+        self.destroy()
+
+def main():
+    arg = sys.argv[1] if len(sys.argv) > 1 else None
+    win = CyberPlayApp(arg)
+    win.connect("destroy", Gtk.main_quit)
+    win.show_all()
+    Gtk.main()
+
+if __name__ == "__main__":
+    main()
