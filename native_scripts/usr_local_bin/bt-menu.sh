@@ -37,9 +37,11 @@ start_bt() {
     sleep 3
     if is_running; then
         notify "Bluetooth ON: Lenovo-A2010-Alpine"
+    DISPLAY=:0 SXMO_WM=dwm XDG_RUNTIME_DIR=/dev/shm/user/0 SXMO_STATE=/dev/shm/user/0/sxmo.state /usr/bin/sxmo_hook_statusbar.sh periodics >/dev/null 2>&1 &
         echo "Bluetooth started"
     else
         notify "Bluetooth failed to start (see $LOG_FILE)"
+    DISPLAY=:0 SXMO_WM=dwm XDG_RUNTIME_DIR=/dev/shm/user/0 SXMO_STATE=/dev/shm/user/0/sxmo.state /usr/bin/sxmo_hook_statusbar.sh periodics >/dev/null 2>&1 &
         echo "Bluetooth failed to start"
         return 1
     fi
@@ -51,6 +53,7 @@ stop_bt() {
         sleep 1
     fi
     notify "Bluetooth OFF"
+    DISPLAY=:0 SXMO_WM=dwm XDG_RUNTIME_DIR=/dev/shm/user/0 SXMO_STATE=/dev/shm/user/0/sxmo.state /usr/bin/sxmo_hook_statusbar.sh periodics >/dev/null 2>&1 &
     echo "Bluetooth stopped"
 }
 
