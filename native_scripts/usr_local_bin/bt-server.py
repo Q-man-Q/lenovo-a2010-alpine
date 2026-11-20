@@ -119,6 +119,7 @@ def read_nvram_bt_address() -> Address:
                 return Address(addr_str, address_type=Address.PUBLIC_DEVICE_ADDRESS)
         except Exception:
             pass
+    # Placeholder fallback MAC address — replace with your own if NVRAM BT_Addr is unavailable
     return Address("02:AA:BB:CC:DD:EE", address_type=Address.PUBLIC_DEVICE_ADDRESS)
 
 
@@ -210,7 +211,8 @@ async def main():
         advertising_interval_min=100,
         advertising_interval_max=200,
     )
-    # Static random address for BLE advertising (top two bits = 11)
+    # Placeholder static random MAC address for BLE advertising (top two bits = 11);
+    # replace with your own unique address if running on multiple devices
     static_addr = Address("D4:AA:BB:CC:DD:EE", address_type=Address.RANDOM_DEVICE_ADDRESS)
     config.address = static_addr
 
