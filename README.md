@@ -17,6 +17,7 @@
   - **Bootable USB Flash (`usb-mode`):** Switches `android_usb` to `mass_storage` exposing a raw disk image (e.g. `/var/lib/usbboot/alpine-usb.img`) to boot x86_64 PCs over UEFI.
 - **Audio (`setup-audio`, `cyberrec`):** ALSA mixer routing for MediaTek MT6328 codec (speaker, headset, microphone recording — verified with Whisper on 1–3m speech).
 - **Wi-Fi / Bluetooth / GPS / Camera / Torch:** `10-mtk-wifi.start`, `wifi-menu.sh`, `bt-server.py` + `bt-menu.sh` (Bluetooth 4.0 BLE + Classic via `/dev/stpbt` and Google Bumble with Sxmo `dmenu` pairing UI), `mtk-gps.sh`, `cybercam` + `camshot`, `torch-toggle.sh`.
+- **4G LTE Cellular Modem (`modem-ctl.sh`, `property_service.py`):** Brings up stock MediaTek CCCI baseband (`ccci_fsd`, `ccci_mdinit`, `gsm0710muxd`) with `/dev/block/platform/mtk-msdc.0/by-name/*` for MASP and `/protect_f` + `/protect_s` + `rw /nvdata`, exposing `/dev/radio/pttycmd1` AT interface and `ccmni0`–`ccmni2` (verified 2G/3G/4G LTE RF tower scanning via `AT+ECELL` / `AT+COPS=?`).
 
 
 ## How Boot & Hardware Bring-Up Work (Kernel & Ramdisk)

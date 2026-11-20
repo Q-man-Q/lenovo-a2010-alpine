@@ -17,6 +17,7 @@
   - **Загрузочная USB-флешка (`usb-mode`):** Переключает `android_usb` в режим `mass_storage`, отдавая сырой образ диска (например, `/var/lib/usbboot/alpine-usb.img`) для загрузки обычных ПК (`x86_64` UEFI) прямо с телефона.
 - **Звук (`setup-audio`, `cyberrec`):** Маршрутизация ALSA-микшеров кодека MediaTek MT6328 (динамик, наушники, запись с микрофона — проверено распознаванием речи через Whisper на дистанции 1–3 м).
 - **Wi-Fi / Bluetooth / GPS / Камера / Фонарик:** `10-mtk-wifi.start`, `wifi-menu.sh`, `bt-server.py` + `bt-menu.sh` (Bluetooth 4.0 BLE + Classic поверх `/dev/stpbt` и Google Bumble с окном подтверждения спаривания в Sxmo `dmenu`), `mtk-gps.sh`, `cybercam` + `camshot`, `torch-toggle.sh`.
+- **4G LTE модем (`modem-ctl.sh`, `property_service.py`):** Запускает стоковый модемный стек MediaTek CCCI (`ccci_fsd`, `ccci_mdinit`, `gsm0710muxd`) с симлинками `/dev/block/platform/mtk-msdc.0/by-name/*` для MASP и разделами `/protect_f` + `/protect_s` + `rw /nvdata`, поднимая AT-каналы `/dev/radio/pttycmd1` и интерфейсы `ccmni0`–`ccmni2` (проверено сканирование живых 2G/3G/4G LTE вышек через `AT+ECELL` / `AT+COPS=?`).
 
 ## Как устроены загрузка и запуск железа (ядро и ramdisk)
 - **Ядро:** Используется **немодифицированное стоковое ядро MediaTek `3.10.65`** из заводского `boot.img` (прошивка `S260`) — пересборка ядра не требуется.
