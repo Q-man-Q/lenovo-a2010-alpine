@@ -16,7 +16,7 @@
   - **RNDIS network (`usbnet-daemon`):** Static USB Ethernet (`10.42.0.2/24`, SSH access).
   - **Bootable USB Flash (`usb-mode`):** Switches `android_usb` to `mass_storage` exposing a raw disk image (e.g. `/var/lib/usbboot/alpine-usb.img`) to boot x86_64 PCs over UEFI.
 - **Audio (`setup-audio`, `cyberrec`):** ALSA mixer routing for MediaTek MT6328 codec (speaker, headset, microphone recording — verified with Whisper on 1–3m speech).
-- **Wi-Fi / GPS / Camera / Torch:** `10-mtk-wifi.start`, `wifi-menu.sh`, `mtk-gps.sh`, `cybercam` + `camshot`, `torch-toggle.sh`.
+- **Wi-Fi / Bluetooth / GPS / Camera / Torch:** `10-mtk-wifi.start`, `wifi-menu.sh`, `bt-server.py` + `bt-menu.sh` (Bluetooth 4.0 BLE + Classic via `/dev/stpbt` and Google Bumble with Sxmo `dmenu` pairing UI), `mtk-gps.sh`, `cybercam` + `camshot`, `torch-toggle.sh`.
 
 
 ## How Boot & Hardware Bring-Up Work (Kernel & Ramdisk)
@@ -24,12 +24,12 @@
 - **Custom Ramdisk (`boot/init`, `boot/init.sh`):** Replaces the Android initramfs inside `boot.img` with a minimal static `busybox` environment that mounts `/dev/mmcblk0p22` (`userdata`) and `switch_root`s into Alpine Linux `/sbin/init`.
 - **Vendor Blobs Reuse (`/system` on `/dev/mmcblk0p20`):** The stock Android `/system` partition is kept read-only and mounted at `/system` so Alpine can initialize MTK hardware via `native_scripts/etc/local.d/`:
   - `05-android-props.start` + `mk-android-props.py` — sets up Android property files needed by vendor daemons.
-  - `10-mtk-wifi.start` — mounts `/nvdata` (`ro`), creates `/dev/wmtWifi` (`c 153 0`) & `/dev/stpwmt` (`c 190 0`), runs `/system/bin/wmt_loader` and `/system/bin/6620_launcher -p /system/etc/firmware/`, then enables `wlan0` via `echo 1 > /dev/wmtWifi`.
+  - `10-mtk-wifi.start` — mounts `/nvdata` (`ro`), creates `/dev/wmtWifi` (`c 153 0`), `/dev/stpwmt` (`c 190 0`), & `/dev/stpbt` (`c 192 0`), runs `/system/bin/wmt_loader` and `/system/bin/6620_launcher -p /system/etc/firmware/`, then enables `wlan0` via `echo 1 > /dev/wmtWifi`.
 
 ## Repository Layout
 - `boot/` — Prebuilt `boot_alpine.img` (stock `3.10.65` kernel + custom ramdisk), plus extracted `init` and `init.sh`.
 - `native_scripts/usr_local_bin/` — Core daemons and CLI utilities (`usbnet-daemon`, `usb-mode`, `setup-audio`, `cyberrec`, `cybercam`, `cyberview`, `hw_keys_daemon.py`, `touch_bridge.py`, `mtk_flusher.py`, etc.).
-- `native_scripts/sxmo_hooks/` — Modified `sxmo_hook_contextmenu.sh` with Wi-Fi, Audio, GPS, Flashlight, Screen Rotate, and USB Flash/RNDIS toggle.
+- `native_scripts/sxmo_hooks/` — Modified `sxmo_hook_contextmenu.sh` with Wi-Fi, Bluetooth, Audio, GPS, Flashlight, Screen Rotate, and USB Flash/RNDIS toggle.
 - `native_scripts/etc/` — OpenRC services (`usbnet`, `cyberdeck`), `fstab`, `network/interfaces`.
 - `native_scripts/configs/` & `native_scripts/applications/` — WM/UI configs and `.desktop` entries.
 - `tools/` — SSH/SCP automation helpers over USB RNDIS (`10.42.0.2`).

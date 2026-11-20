@@ -16,19 +16,19 @@
   - **Сеть RNDIS (`usbnet-daemon`):** Статический USB Ethernet (`10.42.0.2/24`, доступ по SSH).
   - **Загрузочная USB-флешка (`usb-mode`):** Переключает `android_usb` в режим `mass_storage`, отдавая сырой образ диска (например, `/var/lib/usbboot/alpine-usb.img`) для загрузки обычных ПК (`x86_64` UEFI) прямо с телефона.
 - **Звук (`setup-audio`, `cyberrec`):** Маршрутизация ALSA-микшеров кодека MediaTek MT6328 (динамик, наушники, запись с микрофона — проверено распознаванием речи через Whisper на дистанции 1–3 м).
-- **Wi-Fi / GPS / Камера / Фонарик:** `10-mtk-wifi.start`, `wifi-menu.sh`, `mtk-gps.sh`, `cybercam` + `camshot`, `torch-toggle.sh`.
+- **Wi-Fi / Bluetooth / GPS / Камера / Фонарик:** `10-mtk-wifi.start`, `wifi-menu.sh`, `bt-server.py` + `bt-menu.sh` (Bluetooth 4.0 BLE + Classic поверх `/dev/stpbt` и Google Bumble с окном подтверждения спаривания в Sxmo `dmenu`), `mtk-gps.sh`, `cybercam` + `camshot`, `torch-toggle.sh`.
 
 ## Как устроены загрузка и запуск железа (ядро и ramdisk)
 - **Ядро:** Используется **немодифицированное стоковое ядро MediaTek `3.10.65`** из заводского `boot.img` (прошивка `S260`) — пересборка ядра не требуется.
 - **Кастомный `ramdisk` (`boot/init`, `boot/init.sh`):** Стандартный initramfs Android внутри `boot.img` заменён на минимальное окружение со статическим `busybox`, которое монтирует `/dev/mmcblk0p22` (`userdata`) и передаёт управление (`/sbin/init` Alpine Linux) через `switch_root`.
 - **Использование стоковых блобов (`/system` на `/dev/mmcblk0p20`):** Заводской раздел `/system` остаётся в режиме только для чтения (`ro`), чтобы Alpine мог поднимать железо MTK через скрипты в `native_scripts/etc/local.d/`:
   - `05-android-props.start` + `mk-android-props.py` — подготавливает файлы свойств Android для вендорных демонов.
-  - `10-mtk-wifi.start` — монтирует `/nvdata` (`ro`), создаёт узлы `/dev/wmtWifi` (`c 153 0`) и `/dev/stpwmt` (`c 190 0`), запускает `/system/bin/wmt_loader` и `/system/bin/6620_launcher -p /system/etc/firmware/`, после чего включает `wlan0` командой `echo 1 > /dev/wmtWifi`.
+  - `10-mtk-wifi.start` — монтирует `/nvdata` (`ro`), создаёт узлы `/dev/wmtWifi` (`c 153 0`), `/dev/stpwmt` (`c 190 0`) и `/dev/stpbt` (`c 192 0`), запускает `/system/bin/wmt_loader` и `/system/bin/6620_launcher -p /system/etc/firmware/`, после чего включает `wlan0` командой `echo 1 > /dev/wmtWifi`.
 
 ## Структура репозитория
 - `boot/` — Готовый образ `boot_alpine.img` (стоковое ядро `3.10.65` + кастомный ramdisk), а также извлечённые `init` и `init.sh`.
 - `native_scripts/usr_local_bin/` — Основные демоны и утилиты (`usbnet-daemon`, `usb-mode`, `setup-audio`, `cyberrec`, `cybercam`, `cyberview`, `hw_keys_daemon.py`, `touch_bridge.py`, `mtk_flusher.py` и др.).
-- `native_scripts/sxmo_hooks/` — Модифицированный `sxmo_hook_contextmenu.sh` с пунктами Wi-Fi, Audio, GPS, фонарика, поворота экрана и переключателя USB-флешки/RNDIS.
+- `native_scripts/sxmo_hooks/` — Модифицированный `sxmo_hook_contextmenu.sh` с пунктами Wi-Fi, Bluetooth, Audio, GPS, фонарика, поворота экрана и переключателя USB-флешки/RNDIS.
 - `native_scripts/etc/` — Сервисы OpenRC (`usbnet`, `cyberdeck`), скрипты `local.d`, `fstab`, `network/interfaces`.
 - `native_scripts/configs/` и `native_scripts/applications/` — Конфиги оконного менеджера/UI и `.desktop`-ярлыки.
 - `tools/` — Скрипты автоматизации по SSH/SCP через USB RNDIS (`10.42.0.2`).

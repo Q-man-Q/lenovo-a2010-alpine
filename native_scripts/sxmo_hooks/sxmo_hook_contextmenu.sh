@@ -76,6 +76,7 @@ case "$WMCLASS" in
 				[ -e "$XDG_CACHE_HOME/sxmo/sxmo.noidle" ] && printf "%s" "$icon_tof" || printf "%s" "$icon_ton"
 			) ^ 1 ^ (rm $XDG_CACHE_HOME/sxmo/sxmo.noidle 2>/dev/null || touch $XDG_CACHE_HOME/sxmo/sxmo.noidle) && sxmo_state.sh set unlock
 			$icon_cfg USB: $([ "$(/usr/local/bin/usb-mode status)" = "flash" ] && printf "Flash -> RNDIS" || printf "RNDIS -> Flash") ^ 1 ^ /usr/local/bin/usb-mode toggle
+			$icon_cfg Bluetooth: $([ "$(/usr/local/bin/bt-menu.sh status)" = "on" ] && printf "ON" || printf "OFF") ^ 0 ^ /usr/local/bin/bt-menu.sh
 			$icon_ror Rotate Screen              ^ 0 ^ /usr/local/bin/rotate-screen.sh
 			$icon_trm Hooks                      ^ 0 ^ sxmo_hookmenu.sh
 			$icon_cfg Edit configuration         ^ 0 ^ sxmo_terminal.sh $EDITOR $XDG_CONFIG_HOME/sxmo/$(test "$SXMO_WM" = sway && printf sway || printf xinit)
@@ -657,6 +658,7 @@ case "$WMCLASS" in
 			$icon_mus Audio                                              ^ 0 ^ /usr/local/bin/audio-menu.sh
 			$icon_gps GPS                                                ^ 0 ^ /usr/local/bin/gps-menu.sh
 			$icon_cfg USB: $([ "$(/usr/local/bin/usb-mode status)" = "flash" ] && printf "Flash -> RNDIS" || printf "RNDIS -> Flash") ^ 1 ^ /usr/local/bin/usb-mode toggle
+			$icon_cfg Bluetooth: $([ "$(/usr/local/bin/bt-menu.sh status)" = "on" ] && printf "ON" || printf "OFF") ^ 0 ^ /usr/local/bin/bt-menu.sh
 			$(
 				if [ -w /sys/class/leds/torch/brightness ]; then
 					printf "%s Flashlight " "$icon_fll"

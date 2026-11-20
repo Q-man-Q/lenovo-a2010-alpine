@@ -6,6 +6,7 @@ ln -sfn /system/etc/firmware /etc/firmware
 
 [ -c /dev/wmtWifi ] || { rm -f /dev/wmtWifi && mknod /dev/wmtWifi c 153 0 && chmod 660 /dev/wmtWifi; }
 [ -c /dev/stpwmt ] || { rm -f /dev/stpwmt && mknod /dev/stpwmt c 190 0 && chmod 660 /dev/stpwmt; }
+rm -f /dev/stpbt && mknod /dev/stpbt c 192 0 && chmod 660 /dev/stpbt
 
 export LD_LIBRARY_PATH=/system/lib:/vendor/lib
 /system/bin/wmt_loader
